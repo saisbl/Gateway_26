@@ -3,21 +3,24 @@ import requests
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from functools import lru_cache
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max for bulk uploads
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max for large bulk uploads
 
 # Configure session with connection pooling for better performance
 session = requests.Session()
 adapter = requests.adapters.HTTPAdapter(
-    pool_connections=10,
-    pool_maxsize=10,
+    pool_connections=50,
+    pool_maxsize=50,
     max_retries=3
 )
 session.mount('http://', adapter)
 session.mount('https://', adapter)
+
+# Authorization cache to avoid repeated checks
+auth_cache = {}
+auth_cache_ttl = 60  # Cache for 60 seconds
 
 # Create uploads directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -141,9 +144,9 @@ def upload_file():
     results = []
     total_start_time = time.time()
     
-    # Process files in parallel using ThreadPoolExecutor
-    # This significantly reduces total processing time for multiple files
-    max_workers = min(5, len(files))  # Limit to 5 concurrent workers to avoid overwhelming services
+    # Process files in parallel using ThreadPoolExecutor with increased workers
+    # Increased to 50 workers for better parallelization of large batches
+    max_workers = min(50, len(files))  # Increased from 5 to 50 for better throughput
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all file processing tasks

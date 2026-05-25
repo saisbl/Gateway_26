@@ -15,7 +15,7 @@ last_day_reset = None
 
 # Configuration
 MAX_FILE_SIZE_MB = 10
-MAX_REQUESTS_PER_MINUTE = 5
+MAX_REQUESTS_PER_MINUTE = 20  # Changed from 5 to 20 to allow more bulk uploads per minute
 ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'pdf']
 ALLOWED_ENDPOINTS = ['/infer', '/upload']
 
@@ -81,12 +81,8 @@ def authorize():
             }), 413
         
         # Check rate limit (in-memory)
-        global last_minute_reset, rate_limits
+        global rate_limits
         current_minute = datetime.now().strftime('%Y%m%d%H%M')
-        
-        if last_minute_reset != current_minute:
-            rate_limits.clear()
-            last_minute_reset = current_minute
         
         rate_limit_key = f"{api_key}:{current_minute}"
         current_requests = rate_limits[rate_limit_key] + 1
