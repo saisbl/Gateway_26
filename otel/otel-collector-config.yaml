@@ -1,0 +1,69 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Prometheus metrics receiver for Envoy
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'envoy'
+          static_configs:
+            - targets: ['envoy:9901']
+        - job_name: 'policy-service'
+          static_configs:
+            - targets: ['policy-service:5002']
+        - job_name: 'scanner-service'
+          static_configs:
+            - targets: ['scanner-service:5003']
+        - job_name: 'mock-gpu-service'
+          static_configs:
+            - targets: ['mock-gpu-service:5001']
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  # Memory limiter to prevent OOM
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+exporters:
+  # Export to console for demo visibility
+  logging:
+    loglevel: debug
+
+  # Prometheus exporter for metrics
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    const_labels:
+      environment: "demo"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, memory_limiter]
+      exporters: [logging]
+
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [batch, memory_limiter]
+      exporters: [logging, prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch, memory_limiter]
+      exporters: [logging]
+
+  extensions: [pprof]
+
+extensions:
+  pprof:
+    endpoint: 0.0.0.0:1777

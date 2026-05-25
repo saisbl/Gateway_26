@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  # Redis for rate limiting and quotas
+  redis:
+    image: redis:7-alpine
+    container_name: gateway-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - gateway-network
+
+  # Mock GPU Service
+  mock-gpu-service:
+    build:
+      context: ./mock-gpu-service
+      dockerfile: Dockerfile
+    container_name: mock-gpu-service
+    ports:
+      - "5001:5001"
+    environment:
+      - PORT=5001
+    networks:
+      - gateway-network
+    depends_on:
+      - redis
+
+  # Policy Service
+  policy-service:
+    build:
+      context: ./policy-service
+      dockerfile: Dockerfile
+    container_name: policy-service
+    ports:
+      - "5002:5002"
+    environment:
+      - PORT=5002
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - gateway-network
+    depends_on:
+      - redis
+      - mock-gpu-service
+
+  # Scanner Service
+  scanner-service:
+    build:
+      context: ./scanner-service
+      dockerfile: Dockerfile
+    container_name: scanner-service
+    ports:
+      - "5003:5003"
+    environment:
+      - PORT=5003
+    networks:
+      - gateway-network
+    depends_on:
+      - policy-service
+
+  # Envoy Gateway
+  envoy:
+    image: envoyproxy/envoy:v1.29.0
+    container_name: envoy-gateway
+    ports:
+      - "8080:8080"  # Main gateway port
+      - "9901:9901"  # Admin interface
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    networks:
+      - gateway-network
+    depends_on:
+      - policy-service
+      - scanner-service
+      - mock-gpu-service
+
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.90.0
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"  # OTLP gRPC
+      - "4318:4318"  # OTLP HTTP
+      - "8889:8889"  # Prometheus metrics
+      - "1777:1777"  # pprof
+    networks:
+      - gateway-network
+    depends_on:
+      - envoy
+      - policy-service
+      - scanner-service
+      - mock-gpu-service
+
+  # Prometheus for metrics visualization
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - gateway-network
+    depends_on:
+      - otel-collector
+
+networks:
+  gateway-network:
+    driver: bridge
