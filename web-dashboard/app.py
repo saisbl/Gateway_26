@@ -1,10 +1,23 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 import requests
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max for bulk uploads
+
+# Configure session with connection pooling for better performance
+session = requests.Session()
+adapter = requests.adapters.HTTPAdapter(
+    pool_connections=10,
+    pool_maxsize=10,
+    max_retries=3
+)
+session.mount('http://', adapter)
+session.mount('https://', adapter)
 
 # Create uploads directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -18,17 +31,13 @@ SCANNER_SERVICE_URL = "http://localhost:5003"
 def index():
     return render_template('index.html')
 
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    # Get API key from form
-    api_key = request.form.get('api_key', 'demo-key-123')
+def process_single_file(file, api_key, client_ip):
+    """Process a single file through the security gateway"""
+    file_result = {
+        'filename': file.filename,
+        'status': 'pending',
+        'latency': {}
+    }
     
     # Save file temporarily
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
@@ -36,64 +45,128 @@ def upload_file():
     
     try:
         # Step 1: Authorize with Policy Service
+        auth_start = time.time()
         file_size = os.path.getsize(filepath)
         auth_data = {
             "api_key": api_key,
             "endpoint": "/infer",
             "file_size": file_size,
-            "client_ip": request.remote_addr
+            "client_ip": client_ip
         }
         
-        auth_response = requests.post(f"{POLICY_SERVICE_URL}/authorize", json=auth_data)
+        auth_response = session.post(f"{POLICY_SERVICE_URL}/authorize", json=auth_data, timeout=10)
         auth_result = auth_response.json()
+        auth_latency = (time.time() - auth_start) * 1000  # Convert to ms
+        
+        file_result['latency']['authorization_ms'] = round(auth_latency, 2)
         
         if not auth_result.get('allowed'):
             os.remove(filepath)
-            return jsonify({
+            file_result.update({
                 'status': 'rejected',
                 'step': 'authorization',
                 'reason': auth_result.get('reason'),
                 'message': auth_result.get('message')
-            }), 403
+            })
+            return file_result
         
         # Step 2: Scan with Scanner Service
+        scan_start = time.time()
         with open(filepath, 'rb') as f:
-            scan_response = requests.post(f"{SCANNER_SERVICE_URL}/scan", files={'file': f})
+            scan_response = session.post(f"{SCANNER_SERVICE_URL}/scan", files={'file': f}, timeout=10)
         
         scan_result = scan_response.json()
+        scan_latency = (time.time() - scan_start) * 1000  # Convert to ms
+        
+        file_result['latency']['scanning_ms'] = round(scan_latency, 2)
         
         if not scan_result.get('allowed'):
             os.remove(filepath)
-            return jsonify({
+            file_result.update({
                 'status': 'rejected',
                 'step': 'scanning',
                 'reason': scan_result.get('reason'),
                 'message': scan_result.get('message')
-            }), 403
+            })
+            return file_result
         
         # Step 3: Process with GPU Service
+        gpu_start = time.time()
         with open(filepath, 'rb') as f:
-            gpu_response = requests.post(f"{GPU_SERVICE_URL}/infer", files={'file': f})
+            gpu_response = session.post(f"{GPU_SERVICE_URL}/infer", files={'file': f}, timeout=10)
         
         gpu_result = gpu_response.json()
+        gpu_latency = (time.time() - gpu_start) * 1000  # Convert to ms
+        
+        file_result['latency']['inference_ms'] = round(gpu_latency, 2)
+        file_result['latency']['total_security_ms'] = round(auth_latency + scan_latency, 2)
+        file_result['latency']['total_processing_ms'] = round(auth_latency + scan_latency + gpu_latency, 2)
         
         # Clean up
         os.remove(filepath)
         
-        return jsonify({
+        file_result.update({
             'status': 'success',
             'authorization': auth_result,
             'scanning': scan_result,
             'inference': gpu_result
         })
+        return file_result
         
     except Exception as e:
         if os.path.exists(filepath):
             os.remove(filepath)
-        return jsonify({
+        file_result.update({
             'status': 'error',
             'error': str(e)
-        }), 500
+        })
+        return file_result
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    files = request.files.getlist('files')
+    
+    if not files or len(files) == 0:
+        return jsonify({'error': 'No files provided'}), 400
+    
+    # Filter out empty file selections
+    files = [f for f in files if f.filename != '']
+    
+    if not files:
+        return jsonify({'error': 'No files selected'}), 400
+    
+    # Get API key from form
+    api_key = request.form.get('api_key', 'demo-key-123')
+    
+    results = []
+    total_start_time = time.time()
+    
+    # Process files in parallel using ThreadPoolExecutor
+    # This significantly reduces total processing time for multiple files
+    max_workers = min(5, len(files))  # Limit to 5 concurrent workers to avoid overwhelming services
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all file processing tasks
+        future_to_file = {
+            executor.submit(process_single_file, file, api_key, request.remote_addr): file
+            for file in files
+        }
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_file):
+            result = future.result()
+            results.append(result)
+    
+    total_time = (time.time() - total_start_time) * 1000
+    
+    return jsonify({
+        'status': 'completed',
+        'total_files': len(files),
+        'successful': len([r for r in results if r['status'] == 'success']),
+        'failed': len([r for r in results if r['status'] in ['rejected', 'error']]),
+        'total_processing_time_ms': round(total_time, 2),
+        'results': results
+    })
 
 @app.route('/health')
 def health():

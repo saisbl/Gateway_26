@@ -155,6 +155,40 @@
             grid-column: 1 / -1;
         }
 
+        .latency-section {
+            grid-column: 1 / -1;
+        }
+
+        .latency-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .latency-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .latency-card h3 {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+
+        .latency-card .value {
+            font-size: 2em;
+            font-weight: bold;
+        }
+
+        .latency-card .unit {
+            font-size: 0.8em;
+            opacity: 0.8;
+        }
+
         .result-item {
             background: #f8f9fa;
             padding: 15px;
@@ -238,8 +272,8 @@
                 
                 <form id="uploadForm">
                     <div class="form-group">
-                        <label for="file">Select Photo (JPG, PNG, PDF only):</label>
-                        <input type="file" id="file" name="file" accept=".jpg,.jpeg,.png,.pdf" required>
+                        <label for="files">Select Photos (JPG, PNG, PDF only - Multiple files supported):</label>
+                        <input type="file" id="files" name="files" accept=".jpg,.jpeg,.png,.pdf" multiple required>
                     </div>
                     
                     <div class="form-group">
@@ -277,7 +311,15 @@
             <div class="card results-section">
                 <h2>Processing Results</h2>
                 <div id="results">
-                    <p style="color: #666; text-align: center;">Upload a photo to see results</p>
+                    <p style="color: #666; text-align: center;">Upload photos to see results</p>
+                </div>
+            </div>
+            
+            <!-- Latency Summary Section -->
+            <div class="card latency-section">
+                <h2>Security Layer Latency Summary</h2>
+                <div id="latencySummary">
+                    <p style="color: #666; text-align: center;">Upload photos to see latency metrics</p>
                 </div>
             </div>
         </div>
@@ -315,23 +357,27 @@
         document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const fileInput = document.getElementById('file');
+            const filesInput = document.getElementById('files');
             const apiKeyInput = document.getElementById('apiKey');
             const uploadBtn = document.getElementById('uploadBtn');
             const resultsDiv = document.getElementById('results');
+            const latencySummaryDiv = document.getElementById('latencySummary');
             
-            if (!fileInput.files[0]) {
-                alert('Please select a file');
+            if (!filesInput.files[0]) {
+                alert('Please select files');
                 return;
             }
             
             const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
+            for (let i = 0; i < filesInput.files.length; i++) {
+                formData.append('files', filesInput.files[i]);
+            }
             formData.append('api_key', apiKeyInput.value);
             
             uploadBtn.disabled = true;
-            uploadBtn.textContent = 'Processing...';
-            resultsDiv.innerHTML = '<div class="loading">Processing your photo through the security gateway...</div>';
+            uploadBtn.textContent = 'Processing ' + filesInput.files.length + ' files...';
+            resultsDiv.innerHTML = '<div class="loading">Processing your photos through the security gateway...</div>';
+            latencySummaryDiv.innerHTML = '';
             
             try {
                 const response = await fetch('/upload', {
@@ -343,6 +389,7 @@
                 
                 if (response.ok) {
                     displayResults(data);
+                    displayLatencySummary(data);
                 } else {
                     displayError(data);
                 }
@@ -357,22 +404,86 @@
         function displayResults(data) {
             const resultsDiv = document.getElementById('results');
             
-            let html = '';
+            let html = '<div class="result-item info">';
+            html += '<h3>Upload Summary</h3>';
+            html += '<p><strong>Total Files:</strong> ' + data.total_files + '</p>';
+            html += '<p><strong>Successful:</strong> ' + data.successful + '</p>';
+            html += '<p><strong>Failed:</strong> ' + data.failed + '</p>';
+            html += '<p><strong>Total Processing Time:</strong> ' + data.total_processing_time_ms + ' ms</p>';
+            html += '</div>';
             
-            if (data.status === 'success') {
-                html += '<div class="result-item success">';
-                html += '<h3>Success - Photo Processed</h3>';
-                html += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
-                html += '</div>';
-            } else if (data.status === 'rejected') {
-                html += '<div class="result-item error">';
-                html += '<h3>Rejected at ' + data.step + ' Step</h3>';
-                html += '<p><strong>Reason:</strong> ' + data.reason + '</p>';
-                html += '<p><strong>Message:</strong> ' + data.message + '</p>';
-                html += '</div>';
-            }
+            // Display individual file results
+            data.results.forEach((result, index) => {
+                if (result.status === 'success') {
+                    html += '<div class="result-item success">';
+                    html += '<h3>File ' + (index + 1) + ': ' + result.filename + ' - Success</h3>';
+                    html += '<p><strong>Authorization:</strong> ' + result.latency.authorization_ms + ' ms</p>';
+                    html += '<p><strong>Scanning:</strong> ' + result.latency.scanning_ms + ' ms</p>';
+                    html += '<p><strong>Inference:</strong> ' + result.latency.inference_ms + ' ms</p>';
+                    html += '<p><strong>Security Layer Total:</strong> ' + result.latency.total_security_ms + ' ms</p>';
+                    html += '<p><strong>Total Processing:</strong> ' + result.latency.total_processing_ms + ' ms</p>';
+                    html += '</div>';
+                } else if (result.status === 'rejected') {
+                    html += '<div class="result-item error">';
+                    html += '<h3>File ' + (index + 1) + ': ' + result.filename + ' - Rejected</h3>';
+                    html += '<p><strong>Step:</strong> ' + result.step + '</p>';
+                    html += '<p><strong>Reason:</strong> ' + result.reason + '</p>';
+                    html += '<p><strong>Message:</strong> ' + result.message + '</p>';
+                    if (result.latency.authorization_ms) {
+                        html += '<p><strong>Authorization Latency:</strong> ' + result.latency.authorization_ms + ' ms</p>';
+                    }
+                    html += '</div>';
+                } else if (result.status === 'error') {
+                    html += '<div class="result-item error">';
+                    html += '<h3>File ' + (index + 1) + ': ' + result.filename + ' - Error</h3>';
+                    html += '<p><strong>Error:</strong> ' + result.error + '</p>';
+                    html += '</div>';
+                }
+            });
             
             resultsDiv.innerHTML = html;
+        }
+
+        function displayLatencySummary(data) {
+            const latencySummaryDiv = document.getElementById('latencySummary');
+            
+            // Calculate averages
+            const successfulResults = data.results.filter(r => r.status === 'success');
+            
+            if (successfulResults.length === 0) {
+                latencySummaryDiv.innerHTML = '<p style="color: #666; text-align: center;">No successful uploads to calculate latency</p>';
+                return;
+            }
+            
+            const avgAuth = successfulResults.reduce((sum, r) => sum + r.latency.authorization_ms, 0) / successfulResults.length;
+            const avgScan = successfulResults.reduce((sum, r) => sum + r.latency.scanning_ms, 0) / successfulResults.length;
+            const avgSecurity = successfulResults.reduce((sum, r) => sum + r.latency.total_security_ms, 0) / successfulResults.length;
+            const avgTotal = successfulResults.reduce((sum, r) => sum + r.latency.total_processing_ms, 0) / successfulResults.length;
+            
+            let html = '<div class="latency-summary">';
+            html += '<div class="latency-card">';
+            html += '<h3>Avg Authorization</h3>';
+            html += '<div class="value">' + avgAuth.toFixed(2) + '</div>';
+            html += '<div class="unit">ms</div>';
+            html += '</div>';
+            html += '<div class="latency-card">';
+            html += '<h3>Avg Scanning</h3>';
+            html += '<div class="value">' + avgScan.toFixed(2) + '</div>';
+            html += '<div class="unit">ms</div>';
+            html += '</div>';
+            html += '<div class="latency-card">';
+            html += '<h3>Avg Security Layer</h3>';
+            html += '<div class="value">' + avgSecurity.toFixed(2) + '</div>';
+            html += '<div class="unit">ms</div>';
+            html += '</div>';
+            html += '<div class="latency-card">';
+            html += '<h3>Avg Total Processing</h3>';
+            html += '<div class="value">' + avgTotal.toFixed(2) + '</div>';
+            html += '<div class="unit">ms</div>';
+            html += '</div>';
+            html += '</div>';
+            
+            latencySummaryDiv.innerHTML = html;
         }
 
         function displayError(data) {
