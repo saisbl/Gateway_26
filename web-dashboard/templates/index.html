@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Gateway Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .upload-section {
+            grid-column: 1 / -1;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 600;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            background: #f8f9fa;
+            cursor: pointer;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status-section {
+            grid-column: 1 / -1;
+        }
+
+        .service-status {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .service-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .service-card h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-healthy {
+            background: #10b981;
+        }
+
+        .status-unhealthy {
+            background: #ef4444;
+        }
+
+        .results-section {
+            grid-column: 1 / -1;
+        }
+
+        .result-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .result-item h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .result-item pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 14px;
+        }
+
+        .success {
+            border-left: 4px solid #10b981;
+        }
+
+        .error {
+            border-left: 4px solid #ef4444;
+        }
+
+        .info {
+            border-left: 4px solid #3b82f6;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+            font-size: 18px;
+        }
+
+        .api-keys {
+            background: #fef3c7;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #f59e0b;
+        }
+
+        .api-keys h3 {
+            color: #92400e;
+            margin-bottom: 10px;
+        }
+
+        .api-keys p {
+            color: #78350f;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Security Gateway Dashboard</h1>
+        
+        <div class="dashboard">
+            <!-- Upload Section -->
+            <div class="card upload-section">
+                <h2>Upload Photo for Testing</h2>
+                
+                <div class="api-keys">
+                    <h3>Available API Keys</h3>
+                    <p><strong>demo-key-123</strong> - Access to /infer and /upload</p>
+                    <p><strong>test-key-456</strong> - Access to /infer only</p>
+                </div>
+                
+                <form id="uploadForm">
+                    <div class="form-group">
+                        <label for="file">Select Photo (JPG, PNG, PDF only):</label>
+                        <input type="file" id="file" name="file" accept=".jpg,.jpeg,.png,.pdf" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="apiKey">API Key:</label>
+                        <input type="text" id="apiKey" name="apiKey" value="demo-key-123" required>
+                    </div>
+                    
+                    <button type="submit" id="uploadBtn">Upload and Process</button>
+                </form>
+            </div>
+            
+            <!-- Service Status -->
+            <div class="card status-section">
+                <h2>Service Status</h2>
+                <div class="service-status" id="serviceStatus">
+                    <div class="service-card">
+                        <h3>GPU Service</h3>
+                        <span class="status-indicator status-unhealthy"></span>
+                        <span id="gpuStatus">Checking...</span>
+                    </div>
+                    <div class="service-card">
+                        <h3>Policy Service</h3>
+                        <span class="status-indicator status-unhealthy"></span>
+                        <span id="policyStatus">Checking...</span>
+                    </div>
+                    <div class="service-card">
+                        <h3>Scanner Service</h3>
+                        <span class="status-indicator status-unhealthy"></span>
+                        <span id="scannerStatus">Checking...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Results Section -->
+            <div class="card results-section">
+                <h2>Processing Results</h2>
+                <div id="results">
+                    <p style="color: #666; text-align: center;">Upload a photo to see results</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check service health on load
+        function checkServices() {
+            fetch('/health')
+                .then(response => response.json())
+                .then(data => {
+                    updateServiceStatus('gpuStatus', data.gpu_service);
+                    updateServiceStatus('policyStatus', data.policy_service);
+                    updateServiceStatus('scannerStatus', data.scanner_service);
+                })
+                .catch(error => {
+                    console.error('Error checking services:', error);
+                });
+        }
+
+        function updateServiceStatus(elementId, serviceData) {
+            const element = document.getElementById(elementId);
+            const indicator = element.previousElementSibling;
+            
+            if (serviceData.status === 'healthy') {
+                indicator.className = 'status-indicator status-healthy';
+                element.textContent = 'Healthy';
+            } else {
+                indicator.className = 'status-indicator status-unhealthy';
+                element.textContent = 'Unhealthy';
+            }
+        }
+
+        // Handle file upload
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const fileInput = document.getElementById('file');
+            const apiKeyInput = document.getElementById('apiKey');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const resultsDiv = document.getElementById('results');
+            
+            if (!fileInput.files[0]) {
+                alert('Please select a file');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('api_key', apiKeyInput.value);
+            
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Processing...';
+            resultsDiv.innerHTML = '<div class="loading">Processing your photo through the security gateway...</div>';
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayResults(data);
+                } else {
+                    displayError(data);
+                }
+            } catch (error) {
+                displayError({ error: error.message });
+            }
+            
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Upload and Process';
+        });
+
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+            
+            let html = '';
+            
+            if (data.status === 'success') {
+                html += '<div class="result-item success">';
+                html += '<h3>Success - Photo Processed</h3>';
+                html += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                html += '</div>';
+            } else if (data.status === 'rejected') {
+                html += '<div class="result-item error">';
+                html += '<h3>Rejected at ' + data.step + ' Step</h3>';
+                html += '<p><strong>Reason:</strong> ' + data.reason + '</p>';
+                html += '<p><strong>Message:</strong> ' + data.message + '</p>';
+                html += '</div>';
+            }
+            
+            resultsDiv.innerHTML = html;
+        }
+
+        function displayError(data) {
+            const resultsDiv = document.getElementById('results');
+            
+            let html = '<div class="result-item error">';
+            html += '<h3>Error</h3>';
+            html += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            html += '</div>';
+            
+            resultsDiv.innerHTML = html;
+        }
+
+        // Check services on page load
+        checkServices();
+        
+        // Refresh service status every 10 seconds
+        setInterval(checkServices, 10000);
+    </script>
+</body>
+</html>
