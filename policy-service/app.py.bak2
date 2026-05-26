@@ -19,8 +19,6 @@ DAILY_QUOTA_DEFAULT = 10000
 FILE_HASH_TTL_SECONDS = 3600
 HMAC_REQUIRED = False
 HMAC_TIMESTAMP_WINDOW_SECONDS = 300
-MAX_BATCH_SIZE = 500
-BATCH_REQUESTS_PER_MINUTE = 100
 ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'pdf', 'gif', 'bmp', 'tiff', 'webp']
 ALLOWED_ENDPOINTS = ['/infer', '/upload']
 
@@ -73,7 +71,6 @@ API_KEYS = {
 
 rate_limits = defaultdict(int)
 ip_rate_limits = defaultdict(int)
-batch_rate_limits = defaultdict(int)
 daily_quotas = defaultdict(int)
 concurrency_slots = defaultdict(list)
 file_hashes = defaultdict(dict)
@@ -158,15 +155,6 @@ def check_rate_limits(api_key, client_ip):
 
     return True, None, None
 
-def check_batch_rate_limit(api_key):
-    current_minute = now_utc().strftime('%Y%m%d%H%M')
-    key = f"{api_key}:batch:{current_minute}"
-    current = batch_rate_limits[key] + 1
-    batch_rate_limits[key] = current
-    if current > BATCH_REQUESTS_PER_MINUTE:
-        return False, current, BATCH_REQUESTS_PER_MINUTE
-    return True, current, BATCH_REQUESTS_PER_MINUTE
-
 def check_daily_quota(tenant):
     global last_day_reset
     current_day = now_utc().strftime('%Y%m%d')
@@ -230,8 +218,6 @@ def health():
         'active_keys': sum(1 for k in API_KEYS.values() if k['is_active']),
         'rate_limit_per_minute': MAX_REQUESTS_PER_MINUTE,
         'ip_rate_limit_per_minute': MAX_REQUESTS_PER_MINUTE_PER_IP,
-        'batch_rate_limit_per_minute': BATCH_REQUESTS_PER_MINUTE,
-        'max_batch_size': MAX_BATCH_SIZE,
         'concurrent_limit_per_tenant': MAX_CONCURRENT_PER_TENANT,
     }), 200
 
@@ -339,121 +325,6 @@ def authorize():
     except Exception as e:
         stats['total_rejected'] += 1
         return jsonify({'allowed': False, 'reason': 'internal_error', 'message': str(e)}), 500
-
-@app.route('/batch-authorize', methods=['POST'])
-def batch_authorize():
-    start = time.perf_counter()
-    try:
-        data = request.get_json()
-        api_key = data.get('api_key')
-        endpoint = data.get('endpoint')
-        client_ip = data.get('client_ip', 'unknown')
-        files = data.get('files', [])
-
-        if not files:
-            return jsonify({'allowed': False, 'reason': 'no_files', 'message': 'No files provided', 'files': []}), 400
-
-        if len(files) > MAX_BATCH_SIZE:
-            return jsonify({'allowed': False, 'reason': 'batch_too_large',
-                            'message': f'Batch size {len(files)} exceeds maximum of {MAX_BATCH_SIZE}'}), 413
-
-        key_ok, key_reason, key_msg = validate_api_key(api_key)
-        if not key_ok:
-            stats['total_rejected'] += len(files)
-            return jsonify({'allowed': False, 'reason': key_reason, 'message': key_msg, 'files': []}), 401
-
-        key_info = API_KEYS[api_key]
-        tenant = key_info['tenant']
-
-        if endpoint not in key_info['endpoints']:
-            stats['total_rejected'] += len(files)
-            return jsonify({'allowed': False, 'reason': 'endpoint_not_allowed',
-                            'message': f"Endpoint {endpoint} not allowed", 'files': []}), 403
-
-        brl_ok, brl_current, brl_max = check_batch_rate_limit(api_key)
-        if not brl_ok:
-            stats['total_rejected'] += len(files)
-            return jsonify({'allowed': False, 'reason': 'batch_rate_limit_exceeded',
-                            'message': f'Batch rate limit exceeded: {brl_max} batch requests/min', 'files': []}), 429
-
-        daily_allowed = True
-        for _ in files:
-            dq_ok, dq_reason, dq_msg = check_daily_quota(tenant)
-            if not dq_ok:
-                daily_allowed = False
-                break
-
-        file_results = []
-        rejected_count = 0
-        for i, f_info in enumerate(files):
-            file_result = {'index': i, 'filename': f_info.get('filename', f'file_{i}'), 'allowed': False}
-            file_size = f_info.get('file_size', 0)
-            file_hash = f_info.get('file_hash', '')
-            filename = f_info.get('filename', '')
-
-            if file_size > MAX_FILE_SIZE_BYTES:
-                file_result['reason'] = 'file_too_large'
-                file_result['message'] = f'File size exceeds {MAX_FILE_SIZE_BYTES // (1024*1024)}MB limit'
-                rejected_count += 1
-                file_results.append(file_result)
-                continue
-
-            if filename:
-                ext = get_extension(filename)
-                if ext not in ALLOWED_EXTENSIONS:
-                    file_result['reason'] = 'invalid_extension'
-                    file_result['message'] = f"Extension '{ext}' not allowed"
-                    rejected_count += 1
-                    file_results.append(file_result)
-                    continue
-
-            dedup_ok, dedup_reason, dedup_msg = check_file_hash(tenant, file_hash)
-            if not dedup_ok:
-                file_result['reason'] = dedup_reason
-                file_result['message'] = dedup_msg
-                rejected_count += 1
-                file_results.append(file_result)
-                continue
-
-            if not daily_allowed:
-                file_result['reason'] = 'daily_quota_exceeded'
-                file_result['message'] = 'Daily quota exceeded'
-                rejected_count += 1
-                file_results.append(file_result)
-                continue
-
-            file_result['allowed'] = True
-            file_results.append(file_result)
-
-        conc_ok, conc_reason, conc_msg = check_concurrency(tenant)
-        if not conc_ok:
-            for r in file_results:
-                if r.get('allowed'):
-                    r['allowed'] = False
-                    r['reason'] = conc_reason
-                    r['message'] = conc_msg
-                    rejected_count += 1
-
-        accepted = sum(1 for r in file_results if r.get('allowed'))
-        elapsed = (time.perf_counter() - start) * 1000
-        stats['total_authorized'] += accepted
-        stats['total_rejected'] += rejected_count
-        stats['total_auth_time_ms'] += elapsed
-
-        return jsonify({
-            'allowed': accepted > 0,
-            'tenant': tenant,
-            'total_files': len(files),
-            'accepted': accepted,
-            'rejected': rejected_count,
-            'batch_requests_this_minute': brl_current,
-            'batch_request_limit': brl_max,
-            'auth_time_ms': round(elapsed, 2),
-            'files': file_results,
-        }), 200
-
-    except Exception as e:
-        return jsonify({'allowed': False, 'reason': 'internal_error', 'message': str(e), 'files': []}), 500
 
 @app.route('/release', methods=['POST'])
 def release():

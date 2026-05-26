@@ -5,502 +5,1362 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Security Gateway Dashboard</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #1e293b;
+            --bg-card-hover: #263548;
+            --border: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent: #3b82f6;
+            --accent-light: #60a5fa;
+            --accent-glow: rgba(59, 130, 246, 0.15);
+            --success: #22c55e;
+            --success-bg: rgba(34, 197, 94, 0.1);
+            --error: #ef4444;
+            --error-bg: rgba(239, 68, 68, 0.1);
+            --warning: #f59e0b;
+            --warning-bg: rgba(245, 158, 11, 0.1);
+            --info: #3b82f6;
+            --info-bg: rgba(59, 130, 246, 0.1);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.4);
+            --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+            --header-bg: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            --card-muted-bg: rgba(0,0,0,0.15);
         }
-
+        [data-theme="light"] {
+            --bg-primary: #f1f5f9;
+            --bg-secondary: #ffffff;
+            --bg-card: #ffffff;
+            --bg-card-hover: #f8fafc;
+            --border: #e2e8f0;
+            --text-primary: #1e293b;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --accent: #2563eb;
+            --accent-light: #3b82f6;
+            --accent-glow: rgba(37, 99, 235, 0.08);
+            --success: #16a34a;
+            --success-bg: rgba(22, 163, 74, 0.08);
+            --error: #dc2626;
+            --error-bg: rgba(220, 38, 38, 0.08);
+            --warning: #d97706;
+            --warning-bg: rgba(217, 119, 6, 0.08);
+            --info: #2563eb;
+            --info-bg: rgba(37, 99, 235, 0.08);
+            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+            --header-bg: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            --card-muted-bg: rgba(0,0,0,0.04);
+        }
+        html { font-size: 15px; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             min-height: 100vh;
-            padding: 20px;
+            padding: 0;
         }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
+        .app-header {
+            background: var(--header-bg);
+            border-bottom: 1px solid var(--border);
+            padding: 18px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
         }
-
-        h1 {
+        .app-header .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .app-header .brand-icon {
+            width: 40px; height: 40px;
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
             color: white;
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 2.5em;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            font-weight: 700;
         }
-
-        .dashboard {
+        .app-header h1 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-light), #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .app-header .subtitle {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            -webkit-text-fill-color: var(--text-muted);
+        }
+        .theme-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 99px;
+            padding: 4px;
+            cursor: pointer;
+            transition: all var(--transition);
+            flex-shrink: 0;
+        }
+        .theme-toggle:hover { border-color: var(--accent); }
+        .theme-toggle .thumb {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: transform var(--transition), background var(--transition);
+        }
+        [data-theme="light"] .theme-toggle .thumb { transform: translateX(0); }
+        [data-theme="dark"] .theme-toggle .thumb { transform: translateX(32px); }
+        .theme-toggle .icon-label {
+            font-size: 14px;
+            line-height: 1;
+            padding: 0 6px;
+            user-select: none;
+        }
+        .theme-toggle .icon-label:first-child { padding-left: 8px; }
+        .theme-toggle .icon-label:last-child { padding-right: 8px; }
+        .theme-toggle .icon-label.active { color: var(--text-primary); font-weight: 600; }
+        .theme-toggle .icon-label:not(.active) { color: var(--text-muted); }
+        .container { max-width: 1280px; margin: 0 auto; padding: 24px 32px; }
+        .grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            grid-template-columns: 1.2fr 0.8fr;
+            gap: 24px;
+            margin-bottom: 24px;
         }
-
         .card {
-            background: white;
-            border-radius: 15px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            box-shadow: var(--shadow);
+            transition: border-color var(--transition);
         }
-
-        .card h2 {
-            color: #333;
+        .card:hover { border-color: rgba(59, 130, 246, 0.2); }
+        .card-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
             margin-bottom: 20px;
-            font-size: 1.5em;
-            border-bottom: 3px solid #667eea;
-            padding-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
-
-        .upload-section {
-            grid-column: 1 / -1;
+        .card-title .badge {
+            font-size: 0.7rem;
+            padding: 2px 10px;
+            border-radius: 99px;
+            background: var(--accent-glow);
+            color: var(--accent-light);
+            text-transform: none;
+            letter-spacing: normal;
         }
+        .full-width { grid-column: 1 / -1; }
+        .two-col { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 
-        .form-group {
-            margin-bottom: 20px;
+        /* Drop Zone */
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 32px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all var(--transition);
+            background: rgba(59, 130, 246, 0.02);
         }
-
-        label {
-            display: block;
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+        }
+        .drop-zone .icon {
+            font-size: 2.4rem;
             margin-bottom: 8px;
-            color: #555;
+            opacity: 0.6;
+        }
+        .drop-zone .label {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+        }
+        .drop-zone .hint {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        .file-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .file-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 99px;
+            padding: 4px 12px 4px 10px;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            animation: chipIn 200ms ease;
+        }
+        @keyframes chipIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .file-chip .ext {
+            display: inline-block;
+            padding: 0 6px;
+            border-radius: 4px;
+            background: var(--accent-glow);
+            color: var(--accent-light);
             font-weight: 600;
+            font-size: 0.65rem;
+            text-transform: uppercase;
         }
-
-        input[type="file"] {
-            width: 100%;
-            padding: 12px;
-            border: 2px dashed #667eea;
-            border-radius: 8px;
-            background: #f8f9fa;
+        .file-chip .remove {
             cursor: pointer;
-        }
-
-        input[type="text"] {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 16px;
-        }
-
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        button {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            opacity: 0.4;
+            font-size: 1.1rem;
+            line-height: 1;
+            transition: opacity var(--transition);
+            background: none;
             border: none;
-            border-radius: 8px;
-            font-size: 18px;
+            color: var(--text-primary);
+            padding: 0 2px;
+        }
+        .file-chip .remove:hover { opacity: 1; }
+        input[type="file"] { display: none; }
+
+        /* API Key Selector */
+        .api-key-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        .api-key-section label {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .api-key-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .api-key-row select {
+            flex: 1;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+        }
+        .api-key-row select:focus { outline: none; border-color: var(--accent); }
+        .key-permissions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+        .perm-badge {
+            font-size: 0.7rem;
+            padding: 2px 10px;
+            border-radius: 99px;
+            background: var(--info-bg);
+            color: var(--accent-light);
+            border: 1px solid rgba(59,130,246,0.2);
+        }
+
+        /* Upload Button */
+        .btn-upload {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 0.95rem;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s;
+            background: linear-gradient(135deg, var(--accent), #6366f1);
+            color: white;
+            transition: all var(--transition);
+            margin-top: 16px;
+            position: relative;
+            overflow: hidden;
         }
-
-        button:hover {
-            transform: translateY(-2px);
+        .btn-upload:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(59,130,246,0.3);
         }
-
-        button:disabled {
-            background: #ccc;
+        .btn-upload:disabled {
+            background: var(--bg-secondary);
+            color: var(--text-muted);
             cursor: not-allowed;
             transform: none;
+            box-shadow: none;
         }
-
-        .status-section {
-            grid-column: 1 / -1;
-        }
-
-        .service-status {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-        }
-
-        .service-card {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-        }
-
-        .service-card h3 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 1.1em;
-        }
-
-        .status-indicator {
-            display: inline-block;
-            width: 15px;
-            height: 15px;
+        .btn-upload .spinner {
+            display: none;
+            width: 18px; height: 18px;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-top-color: white;
             border-radius: 50%;
-            margin-right: 8px;
+            animation: spin 0.7s linear infinite;
+            margin: 0 auto;
         }
+        .btn-upload.loading .spinner { display: block; }
+        .btn-upload.loading .btn-text { display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        .status-healthy {
-            background: #10b981;
-        }
-
-        .status-unhealthy {
-            background: #ef4444;
-        }
-
-        .results-section {
-            grid-column: 1 / -1;
-        }
-
-        .latency-section {
-            grid-column: 1 / -1;
-        }
-
-        .latency-summary {
+        /* Service Status Cards */
+        .status-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        .status-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            text-align: center;
+            transition: border-color var(--transition);
+        }
+        .status-card .dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+            transition: background var(--transition);
+        }
+        .status-card .dot.healthy { background: var(--success); box-shadow: 0 0 8px rgba(34,197,94,0.4); }
+        .status-card .dot.unhealthy { background: var(--error); box-shadow: 0 0 8px rgba(239,68,68,0.4); }
+        .status-card .dot.checking { background: var(--warning); animation: pulse 1s ease infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+        .status-card .srv-name {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+        .status-card .srv-status {
+            font-size: 0.82rem;
+            font-weight: 600;
+        }
+        .status-card .srv-port {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 4px;
         }
 
+        /* Latency Summary */
+        .latency-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
         .latency-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
             text-align: center;
         }
-
-        .latency-card h3 {
-            font-size: 1.1em;
-            margin-bottom: 10px;
-            opacity: 0.9;
+        .latency-card .lbl {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 6px;
         }
-
-        .latency-card .value {
-            font-size: 2em;
-            font-weight: bold;
+        .latency-card .val {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-light);
         }
-
+        .latency-card .val.success { color: var(--success); }
         .latency-card .unit {
-            font-size: 0.8em;
-            opacity: 0.8;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-left: 2px;
+        }
+        .latency-bar {
+            margin-top: 8px;
+            height: 4px;
+            background: var(--border);
+            border-radius: 99px;
+            overflow: hidden;
+        }
+        .latency-bar .fill {
+            height: 100%;
+            border-radius: 99px;
+            background: linear-gradient(90deg, var(--accent), #8b5cf6);
+            transition: width 500ms ease;
         }
 
+        /* Results */
+        .summary-bar {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+        }
+        .summary-bar .stat {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+        .summary-bar .stat strong { color: var(--text-primary); }
+        .summary-bar .stat .num { font-weight: 700; font-size: 1rem; }
+        .summary-bar .stat .num.good { color: var(--success); }
+        .summary-bar .stat .num.bad { color: var(--error); }
+
+        .results-layout { display: flex; flex-direction: column; gap: 16px; position: relative; }
+
+        /* Inspection Modal */
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 24px;
+            animation: fadeIn 150ms ease;
+        }
+        .modal-overlay.open { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            max-width: 640px;
+            width: 100%;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            animation: modalIn 200ms ease;
+        }
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px 0;
+            gap: 12px;
+        }
+        .modal-header .mh-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+        .modal-header .mh-file-icon {
+            width: 36px; height: 36px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+        .mh-file-icon.jpg, .mh-file-icon.jpeg { background: rgba(59,130,246,0.15); color: var(--accent-light); }
+        .mh-file-icon.png { background: rgba(34,197,94,0.15); color: var(--success); }
+        .mh-file-icon.pdf { background: rgba(239,68,68,0.15); color: var(--error); }
+        .modal-header .mh-name {
+            font-size: 1rem;
+            font-weight: 600;
+            word-break: break-all;
+        }
+        .modal-header .mh-nav {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        .modal-header .mh-nav button {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 6px 10px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            transition: all var(--transition);
+        }
+        .modal-header .mh-nav button:hover { border-color: var(--accent); color: var(--text-primary); }
+        .modal-header .mh-nav button:disabled { opacity: 0.3; cursor: not-allowed; }
+        .modal-header .mh-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.4rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
+            transition: all var(--transition);
+            line-height: 1;
+        }
+        .modal-header .mh-close:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
+        .modal-body {
+            padding: 20px 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .modal-body::-webkit-scrollbar { width: 4px; }
+        .modal-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+        .inspect-section { margin-bottom: 20px; }
+        .inspect-section:last-child { margin-bottom: 0; }
+        .inspect-section .is-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .inspect-section .is-title .line {
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+        .inspect-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .inspect-field {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+        }
+        .inspect-field .if-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 2px;
+        }
+        .inspect-field .if-value {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .inspect-field .if-value.good { color: var(--success); }
+        .inspect-field .if-value.bad { color: var(--error); }
+        .inspect-field.full { grid-column: 1 / -1; }
+        .inspect-field .if-value .unit { font-weight: 400; color: var(--text-muted); font-size: 0.75rem; }
+
+        .inspect-timeline {
+            display: flex;
+            gap: 0;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            height: 8px;
+            margin-bottom: 12px;
+        }
+        .inspect-timeline .it-seg { height: 100%; }
+        .it-seg.auth { background: var(--accent); }
+        .it-seg.scan { background: #8b5cf6; }
+        .it-seg.gpu { background: var(--success); }
+
+        .inspect-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .inspect-step {
+            display: grid;
+            grid-template-columns: 32px 1fr auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+        .inspect-step .is-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            margin: 0 auto;
+        }
+        .is-dot.pass { background: var(--success); box-shadow: 0 0 6px rgba(34,197,94,0.3); }
+        .is-dot.fail { background: var(--error); box-shadow: 0 0 6px rgba(239,68,68,0.3); }
+        .inspect-step .is-name { font-size: 0.82rem; font-weight: 500; }
+        .inspect-step .is-latency { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
+        .inspect-step .is-latency .val { color: var(--text-primary); font-weight: 600; }
+
+        .inspect-msg {
+            padding: 10px 14px;
+            background: var(--warning-bg);
+            border: 1px solid rgba(245,158,11,0.2);
+            border-radius: var(--radius-sm);
+            font-size: 0.82rem;
+            color: var(--warning);
+        }
+        .inspect-msg.error { background: var(--error-bg); border-color: rgba(239,68,68,0.2); color: var(--error); }
+
+        /* Summary Table */
+        .summary-table-wrap { overflow-x: auto; }
+        .summary-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+        .summary-table thead th {
+            text-align: left;
+            padding: 8px 10px;
+            font-weight: 600;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            position: sticky;
+            top: 0;
+            background: var(--bg-card);
+        }
+        .summary-table tbody td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        .summary-table tbody tr:hover { background: var(--accent-glow); }
+        .summary-table tbody tr.active { background: var(--accent-glow); border-left: 2px solid var(--accent); }
+        .summary-table tbody tr:last-child td { border-bottom: none; }
+        .summary-table .file-name { font-weight: 500; word-break: break-all; max-width: 160px; }
+        .summary-table .file-ext {
+            display: inline-block;
+            font-size: 0.6rem;
+            padding: 1px 6px;
+            border-radius: 4px;
+            background: var(--accent-glow);
+            color: var(--accent-light);
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-right: 4px;
+        }
+        .summary-table .status-tag {
+            display: inline-block;
+            font-size: 0.65rem;
+            padding: 2px 8px;
+            border-radius: 99px;
+            font-weight: 600;
+        }
+        .status-tag.success { background: var(--success-bg); color: var(--success); }
+        .status-tag.rejected { background: var(--error-bg); color: var(--error); }
+        .status-tag.error { background: var(--warning-bg); color: var(--warning); }
+        .summary-table .lat-cell { white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .summary-table .lat-cell .muted { color: var(--text-muted); font-size: 0.7rem; }
+        .summary-table .reason-cell { color: var(--text-muted); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .result-list { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; padding-right: 4px; }
+        .result-list::-webkit-scrollbar { width: 4px; }
+        .result-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
         .result-item {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 10px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            border-left: 3px solid var(--text-muted);
+            animation: slideIn 200ms ease;
         }
-
-        .result-item h3 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 1.1em;
+        @keyframes slideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .result-item.success { border-left-color: var(--success); }
+        .result-item.rejected { border-left-color: var(--error); }
+        .result-item.error { border-left-color: var(--warning); }
+        .result-item .ri-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            gap: 8px;
         }
-
-        .result-item pre {
-            background: #2d3748;
-            color: #e2e8f0;
-            padding: 15px;
-            border-radius: 5px;
-            overflow-x: auto;
-            font-size: 14px;
+        .result-item .ri-name {
+            font-weight: 600;
+            font-size: 0.85rem;
+            word-break: break-all;
         }
-
-        .success {
-            border-left: 4px solid #10b981;
+        .result-item .ri-badge {
+            font-size: 0.65rem;
+            padding: 2px 10px;
+            border-radius: 99px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
         }
-
-        .error {
-            border-left: 4px solid #ef4444;
+        .ri-badge.success { background: var(--success-bg); color: var(--success); }
+        .ri-badge.rejected { background: var(--error-bg); color: var(--error); }
+        .ri-badge.error { background: var(--warning-bg); color: var(--warning); }
+        .result-item .ri-details {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 14px;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
         }
-
-        .info {
-            border-left: 4px solid #3b82f6;
+        .result-item .ri-details span { display: flex; align-items: center; gap: 4px; }
+        .result-item .ri-details .label { color: var(--text-muted); }
+        .result-item .ri-msg {
+            margin-top: 6px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            padding: 6px 10px;
+            background: var(--card-muted-bg);
+            border-radius: 4px;
         }
+        .result-item .ri-latency-bar {
+            margin-top: 6px;
+            display: flex;
+            gap: 0;
+            height: 3px;
+            border-radius: 99px;
+            overflow: hidden;
+        }
+        .ri-latency-bar .seg { height: 100%; }
+        .ri-latency-bar .seg.auth { background: var(--accent); }
+        .ri-latency-bar .seg.scan { background: #8b5cf6; }
+        .ri-latency-bar .seg.gpu { background: var(--success); }
 
-        .loading {
+        .empty-state {
             text-align: center;
-            padding: 20px;
-            color: #667eea;
-            font-size: 18px;
+            padding: 40px 20px;
+            color: var(--text-muted);
         }
+        .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.5; }
+        .empty-state .msg { font-size: 0.9rem; }
+        .empty-state .sub { font-size: 0.78rem; margin-top: 4px; }
 
-        .api-keys {
-            background: #fef3c7;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border-left: 4px solid #f59e0b;
+        .processing-state {
+            text-align: center;
+            padding: 40px 20px;
         }
-
-        .api-keys h3 {
-            color: #92400e;
-            margin-bottom: 10px;
+        .processing-state .spinner-lg {
+            width: 32px; height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
         }
+        .processing-state .msg { color: var(--text-secondary); font-size: 0.9rem; }
 
-        .api-keys p {
-            color: #78350f;
-            margin: 5px 0;
+        @media (max-width: 960px) {
+            .grid { grid-template-columns: 1fr; }
+            .two-col { grid-template-columns: 1fr; }
+            .status-grid { grid-template-columns: repeat(3, 1fr); }
+            .latency-grid { grid-template-columns: repeat(2, 1fr); }
+            .container { padding: 16px; }
+            .app-header { padding: 14px 16px; }
         }
-
-        @media (max-width: 768px) {
-            .dashboard {
-                grid-template-columns: 1fr;
-            }
+        @media (max-width: 540px) {
+            .status-grid { grid-template-columns: 1fr; }
+            .latency-grid { grid-template-columns: 1fr 1fr; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Security Gateway Dashboard</h1>
-        
-        <div class="dashboard">
-            <!-- Upload Section -->
-            <div class="card upload-section">
-                <h2>Upload Photo for Testing</h2>
-                
-                <div class="api-keys">
-                    <h3>Available API Keys</h3>
-                    <p><strong>demo-key-123</strong> - Access to /infer and /upload</p>
-                    <p><strong>test-key-456</strong> - Access to /infer only</p>
+    <header class="app-header">
+        <div class="brand">
+            <div class="brand-icon">&#x1f6e1;</div>
+            <div>
+                <h1>Security Gateway</h1>
+                <div class="subtitle">API Protection &amp; File Validation Demo</div>
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;">
+            <div class="theme-toggle" id="themeToggle" title="Toggle theme" role="button" tabindex="0">
+                <span class="icon-label" data-theme-icon="light">&#x2600;</span>
+                <div class="thumb" id="themeThumb">&#x1f319;</div>
+                <span class="icon-label" data-theme-icon="dark">&#x1f319;</span>
+            </div>
+            <div style="gap:6px;flex-direction:column;align-items:flex-end;display:none;" class="header-info">
+                <div style="font-size:0.75rem;color:var(--text-muted);">http://localhost:8080</div>
+                <div style="display:flex;gap:8px;font-size:0.7rem;color:var(--text-muted);">
+                    <span>Envoy &bull;</span>
+                    <span>Policy &bull;</span>
+                    <span>Scanner &bull;</span>
+                    <span>GPU</span>
                 </div>
-                
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="grid">
+            <!-- Upload Card -->
+            <div class="card">
+                <div class="card-title">
+                    Upload Files
+                    <span class="badge">JPG &bull; PNG &bull; PDF</span>
+                </div>
                 <form id="uploadForm">
-                    <div class="form-group">
-                        <label for="files">Select Photos (JPG, PNG, PDF only - Multiple files supported):</label>
-                        <input type="file" id="files" name="files" accept=".jpg,.jpeg,.png,.pdf" multiple required>
+                    <div class="drop-zone" id="dropZone">
+                        <div class="icon">&#x1f4c1;</div>
+                        <div class="label">Drop files here or click to browse</div>
+                        <div class="hint">Supports multiple JPG, PNG, and PDF files</div>
+                        <div class="file-chips" id="fileChips"></div>
                     </div>
-                    
-                    <div class="form-group">
-                        <label for="apiKey">API Key:</label>
-                        <input type="text" id="apiKey" name="apiKey" value="demo-key-123" required>
+                    <input type="file" id="files" name="files" accept=".jpg,.jpeg,.png,.pdf" multiple>
+
+                    <div class="api-key-section">
+                        <label for="apiKey">API Key</label>
+                        <div class="api-key-row">
+                            <select id="apiKey" name="apiKey">
+                                <option value="demo-key-123">demo-key-123 (Full Access)</option>
+                                <option value="test-key-456">test-key-456 (Limited Access)</option>
+                            </select>
+                        </div>
+                        <div class="key-permissions" id="keyPerms">
+                            <span class="perm-badge">&#x2713; /infer</span>
+                            <span class="perm-badge">&#x2713; /upload</span>
+                        </div>
                     </div>
-                    
-                    <button type="submit" id="uploadBtn">Upload and Process</button>
+                    <button type="submit" class="btn-upload" id="uploadBtn">
+                        <span class="btn-text">Upload &amp; Process</span>
+                        <div class="spinner"></div>
+                    </button>
                 </form>
             </div>
-            
-            <!-- Service Status -->
-            <div class="card status-section">
-                <h2>Service Status</h2>
-                <div class="service-status" id="serviceStatus">
-                    <div class="service-card">
-                        <h3>GPU Service</h3>
-                        <span class="status-indicator status-unhealthy"></span>
-                        <span id="gpuStatus">Checking...</span>
+
+            <!-- Service Status Card -->
+            <div class="card">
+                <div class="card-title">
+                    Service Status
+                    <span class="badge" id="healthBadge">Checking...</span>
+                </div>
+                <div class="status-grid" id="serviceStatus">
+                    <div class="status-card">
+                        <div class="srv-name">&#x1f5a5; GPU Service</div>
+                        <div><span class="dot checking" id="gpuDot"></span><span class="srv-status" id="gpuStatus">Checking</span></div>
+                        <div class="srv-port">:5001</div>
                     </div>
-                    <div class="service-card">
-                        <h3>Policy Service</h3>
-                        <span class="status-indicator status-unhealthy"></span>
-                        <span id="policyStatus">Checking...</span>
+                    <div class="status-card">
+                        <div class="srv-name">&#x1f6e1; Policy Service</div>
+                        <div><span class="dot checking" id="policyDot"></span><span class="srv-status" id="policyStatus">Checking</span></div>
+                        <div class="srv-port">:5002</div>
                     </div>
-                    <div class="service-card">
-                        <h3>Scanner Service</h3>
-                        <span class="status-indicator status-unhealthy"></span>
-                        <span id="scannerStatus">Checking...</span>
+                    <div class="status-card">
+                        <div class="srv-name">&#x1f50d; Scanner Service</div>
+                        <div><span class="dot checking" id="scannerDot"></span><span class="srv-status" id="scannerStatus">Checking</span></div>
+                        <div class="srv-port">:5003</div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Results Section -->
-            <div class="card results-section">
-                <h2>Processing Results</h2>
-                <div id="results">
-                    <p style="color: #666; text-align: center;">Upload photos to see results</p>
+        </div>
+
+        <!-- Latency Summary -->
+        <div class="card full-width" style="margin-bottom:24px;">
+            <div class="card-title">
+                Security Layer Latency
+                <span class="badge" id="latencyCount">No data</span>
+            </div>
+            <div class="latency-grid" id="latencySummary">
+                <div class="latency-card">
+                    <div class="lbl">Authorization</div>
+                    <div><span class="val" id="latAuth">--</span><span class="unit">ms</span></div>
+                    <div class="latency-bar"><div class="fill" id="barAuth" style="width:0%"></div></div>
+                </div>
+                <div class="latency-card">
+                    <div class="lbl">Scanning</div>
+                    <div><span class="val" id="latScan">--</span><span class="unit">ms</span></div>
+                    <div class="latency-bar"><div class="fill" id="barScan" style="width:0%"></div></div>
+                </div>
+                <div class="latency-card">
+                    <div class="lbl">Security Layer</div>
+                    <div><span class="val success" id="latSecurity">--</span><span class="unit">ms</span></div>
+                    <div class="latency-bar"><div class="fill" id="barSecurity" style="width:0%;background:linear-gradient(90deg,var(--success),#22d3ee)"></div></div>
+                </div>
+                <div class="latency-card">
+                    <div class="lbl">Total Processing</div>
+                    <div><span class="val success" id="latTotal">--</span><span class="unit">ms</span></div>
+                    <div class="latency-bar"><div class="fill" id="barTotal" style="width:0%;background:linear-gradient(90deg,#22d3ee,var(--success))"></div></div>
                 </div>
             </div>
-            
-            <!-- Latency Summary Section -->
-            <div class="card latency-section">
-                <h2>Security Layer Latency Summary</h2>
-                <div id="latencySummary">
-                    <p style="color: #666; text-align: center;">Upload photos to see latency metrics</p>
+        </div>
+
+        <!-- Results -->
+        <div class="card full-width">
+            <div class="card-title">
+                Processing Results
+                <span class="badge" id="resultCount">0 files</span>
+            </div>
+            <div class="results-layout" id="results">
+                <div class="summary-table-wrap">
+                    <table class="summary-table">
+                        <thead>
+                            <tr>
+                                <th>File</th>
+                                <th>Status</th>
+                                <th>Auth</th>
+                                <th>Scan</th>
+                                <th>Infer</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summaryBody">
+                            <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:32px 0;">Upload files to see results</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Inspection Modal -->
+    <div class="modal-overlay" id="inspectModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="mh-left">
+                    <div class="mh-file-icon" id="modalFileIcon">&#x1f5bc;</div>
+                    <div class="mh-name" id="modalFileName">filename.ext</div>
+                    <span class="status-tag" id="modalStatusTag" style="flex-shrink:0;">success</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <div class="mh-nav">
+                        <button id="modalPrev" title="Previous file">&#x25C0;</button>
+                        <span id="modalCounter" style="font-size:0.75rem;color:var(--text-muted);padding:0 4px;white-space:nowrap;">1 / 3</span>
+                        <button id="modalNext" title="Next file">&#x25B6;</button>
+                    </div>
+                    <button class="mh-close" id="modalClose">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
     <script>
-        // Check service health on load
+        // Theme toggle
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            const thumb = document.getElementById('themeThumb');
+            const labels = document.querySelectorAll('[data-theme-icon]');
+            labels.forEach(l => l.classList.toggle('active', l.dataset.themeIcon === theme));
+            thumb.textContent = theme === 'dark' ? '\u{1f319}' : '\u{2600}\u{fe0f}';
+        }
+        (function initTheme() {
+            const saved = localStorage.getItem('theme') || 'dark';
+            setTheme(saved);
+            document.getElementById('themeToggle').addEventListener('click', () => {
+                const current = document.documentElement.getAttribute('data-theme');
+                setTheme(current === 'dark' ? 'light' : 'dark');
+            });
+        })();
+
+        const SERVICE_KEYS = ['gpu_service', 'policy_service', 'scanner_service'];
+        const SERVICE_META = {
+            gpu_service: { dotId: 'gpuDot', statusId: 'gpuStatus', name: 'GPU Service' },
+            policy_service: { dotId: 'policyDot', statusId: 'policyStatus', name: 'Policy Service' },
+            scanner_service: { dotId: 'scannerDot', statusId: 'scannerStatus', name: 'Scanner Service' }
+        };
+        const KEY_PERMS = {
+            'demo-key-123': ['/infer', '/upload'],
+            'test-key-456': ['/infer']
+        };
+
+        // Drop zone
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('files');
+        const fileChips = document.getElementById('fileChips');
+        let selectedFiles = [];
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); fileInput.files = e.dataTransfer.files; updateFileChips(); });
+        fileInput.addEventListener('change', updateFileChips);
+
+        function updateFileChips() {
+            selectedFiles = Array.from(fileInput.files);
+            if (selectedFiles.length === 0) { fileChips.innerHTML = ''; return; }
+            fileChips.innerHTML = selectedFiles.map((f, i) => {
+                const ext = f.name.split('.').pop().toLowerCase();
+                return `<div class="file-chip"><span class="ext">${ext}</span>${f.name} <button type="button" class="remove" data-index="${i}">&times;</button></div>`;
+            }).join('');
+            fileChips.querySelectorAll('.remove').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const idx = parseInt(btn.dataset.index);
+                    selectedFiles.splice(idx, 1);
+                    const dt = new DataTransfer();
+                    selectedFiles.forEach(f => dt.items.add(f));
+                    fileInput.files = dt.files;
+                    updateFileChips();
+                });
+            });
+        }
+
+        // API Key selector
+        document.getElementById('apiKey').addEventListener('change', function() {
+            const perms = KEY_PERMS[this.value] || [];
+            document.getElementById('keyPerms').innerHTML = perms.map(p => `<span class="perm-badge">&#x2713; ${p}</span>`).join('');
+        });
+
+        // Service health (proxied through dashboard to avoid CORS)
         function checkServices() {
             fetch('/health')
-                .then(response => response.json())
+                .then(r => r.json())
                 .then(data => {
-                    updateServiceStatus('gpuStatus', data.gpu_service);
-                    updateServiceStatus('policyStatus', data.policy_service);
-                    updateServiceStatus('scannerStatus', data.scanner_service);
+                    let healthy = 0;
+                    SERVICE_KEYS.forEach(key => {
+                        const svc = data[key];
+                        const meta = SERVICE_META[key];
+                        if (svc && svc.status === 'healthy') {
+                            healthy++;
+                            setServiceStatus(meta.dotId, meta.statusId, true);
+                        } else {
+                            setServiceStatus(meta.dotId, meta.statusId, false);
+                        }
+                    });
+                    const total = SERVICE_KEYS.length;
+                    const badge = document.getElementById('healthBadge');
+                    if (healthy === total) badge.textContent = 'All Healthy';
+                    else if (healthy === 0) badge.textContent = 'All Down';
+                    else badge.textContent = healthy + '/' + total + ' Healthy';
                 })
-                .catch(error => {
-                    console.error('Error checking services:', error);
+                .catch(() => {
+                    SERVICE_KEYS.forEach(key => {
+                        const meta = SERVICE_META[key];
+                        setServiceStatus(meta.dotId, meta.statusId, false);
+                    });
+                    document.getElementById('healthBadge').textContent = 'Unreachable';
                 });
         }
 
-        function updateServiceStatus(elementId, serviceData) {
-            const element = document.getElementById(elementId);
-            const indicator = element.previousElementSibling;
-            
-            if (serviceData.status === 'healthy') {
-                indicator.className = 'status-indicator status-healthy';
-                element.textContent = 'Healthy';
-            } else {
-                indicator.className = 'status-indicator status-unhealthy';
-                element.textContent = 'Unhealthy';
-            }
+        function setServiceStatus(dotId, statusId, ok) {
+            const dot = document.getElementById(dotId);
+            const st = document.getElementById(statusId);
+            dot.className = 'dot ' + (ok ? 'healthy' : 'unhealthy');
+            st.textContent = ok ? 'Healthy' : 'Unhealthy';
         }
 
-        // Handle file upload
+        // Upload
         document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
-            const filesInput = document.getElementById('files');
-            const apiKeyInput = document.getElementById('apiKey');
-            const uploadBtn = document.getElementById('uploadBtn');
-            const resultsDiv = document.getElementById('results');
-            const latencySummaryDiv = document.getElementById('latencySummary');
-            
-            if (!filesInput.files[0]) {
-                alert('Please select files');
-                return;
-            }
-            
+            const files = Array.from(fileInput.files).filter(f => f.name !== '');
+            if (files.length === 0) { alert('Please select files'); return; }
+
+            const btn = document.getElementById('uploadBtn');
+            const summaryBody = document.getElementById('summaryBody');
+            const resultCount = document.getElementById('resultCount');
+
+            btn.classList.add('loading');
+            btn.disabled = true;
+            resultCount.textContent = 'Processing...';
+
+            summaryBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:32px 0;"><div class="processing-state" style="padding:10px;"><div class="spinner-lg"></div><div style="margin-top:8px;font-size:0.82rem;">Processing ' + files.length + ' file(s)...</div></div></td></tr>';
+            closeModal();
+
             const formData = new FormData();
-            for (let i = 0; i < filesInput.files.length; i++) {
-                formData.append('files', filesInput.files[i]);
-            }
-            formData.append('api_key', apiKeyInput.value);
-            
-            uploadBtn.disabled = true;
-            uploadBtn.textContent = 'Processing ' + filesInput.files.length + ' files...';
-            resultsDiv.innerHTML = '<div class="loading">Processing your photos through the security gateway...</div>';
-            latencySummaryDiv.innerHTML = '';
-            
+            files.forEach(f => formData.append('files', f));
+            formData.append('api_key', document.getElementById('apiKey').value);
+
             try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                
+                const response = await fetch('/upload', { method: 'POST', body: formData });
                 const data = await response.json();
-                
                 if (response.ok) {
                     displayResults(data);
-                    displayLatencySummary(data);
+                    displayLatency(data);
                 } else {
                     displayError(data);
                 }
-            } catch (error) {
-                displayError({ error: error.message });
+            } catch (err) {
+                displayError({ error: err.message });
             }
-            
-            uploadBtn.disabled = false;
-            uploadBtn.textContent = 'Upload and Process';
+
+            btn.classList.remove('loading');
+            btn.disabled = false;
         });
 
         function displayResults(data) {
-            const resultsDiv = document.getElementById('results');
-            
-            let html = '<div class="result-item info">';
-            html += '<h3>Upload Summary</h3>';
-            html += '<p><strong>Total Files:</strong> ' + data.total_files + '</p>';
-            html += '<p><strong>Successful:</strong> ' + data.successful + '</p>';
-            html += '<p><strong>Failed:</strong> ' + data.failed + '</p>';
-            html += '<p><strong>Total Processing Time:</strong> ' + data.total_processing_time_ms + ' ms</p>';
-            html += '</div>';
-            
-            // Display individual file results
-            data.results.forEach((result, index) => {
-                if (result.status === 'success') {
-                    html += '<div class="result-item success">';
-                    html += '<h3>File ' + (index + 1) + ': ' + result.filename + ' - Success</h3>';
-                    html += '<p><strong>Authorization:</strong> ' + result.latency.authorization_ms + ' ms</p>';
-                    html += '<p><strong>Scanning:</strong> ' + result.latency.scanning_ms + ' ms</p>';
-                    html += '<p><strong>Inference:</strong> ' + result.latency.inference_ms + ' ms</p>';
-                    html += '<p><strong>Security Layer Total:</strong> ' + result.latency.total_security_ms + ' ms</p>';
-                    html += '<p><strong>Total Processing:</strong> ' + result.latency.total_processing_ms + ' ms</p>';
-                    html += '</div>';
-                } else if (result.status === 'rejected') {
-                    html += '<div class="result-item error">';
-                    html += '<h3>File ' + (index + 1) + ': ' + result.filename + ' - Rejected</h3>';
-                    html += '<p><strong>Step:</strong> ' + result.step + '</p>';
-                    html += '<p><strong>Reason:</strong> ' + result.reason + '</p>';
-                    html += '<p><strong>Message:</strong> ' + result.message + '</p>';
-                    if (result.latency.authorization_ms) {
-                        html += '<p><strong>Authorization Latency:</strong> ' + result.latency.authorization_ms + ' ms</p>';
-                    }
-                    html += '</div>';
-                } else if (result.status === 'error') {
-                    html += '<div class="result-item error">';
-                    html += '<h3>File ' + (index + 1) + ': ' + result.filename + ' - Error</h3>';
-                    html += '<p><strong>Error:</strong> ' + result.error + '</p>';
-                    html += '</div>';
+            const summaryBody = document.getElementById('summaryBody');
+            const count = document.getElementById('resultCount');
+            const successful = data.results.filter(r => r.status === 'success').length;
+            const rejected = data.results.filter(r => r.status === 'rejected').length;
+            const errors = data.results.filter(r => r.status === 'error').length;
+            count.textContent = data.total_files + ' files';
+
+            // Store results data for detail view
+            let resultsData = data.results;
+
+            // Build summary table
+            let rows = '<tr class="summary-header-row"><td colspan="6" style="padding:0 0 8px 0;"><div class="summary-bar" style="margin:0;padding:0;background:none;border:none;">';
+            rows += '<div class="stat">Total: <strong>' + data.total_files + '</strong></div>';
+            rows += '<div class="stat">&#x2713; Success: <span class="num good">' + successful + '</span></div>';
+            rows += '<div class="stat">&#x2717; Rejected: <span class="num bad">' + rejected + '</span></div>';
+            if (errors) rows += '<div class="stat">&#x26a0; Errors: <span class="num bad">' + errors + '</span></div>';
+            rows += '<div class="stat">Time: <strong>' + (data.total_processing_time_ms || 0).toFixed(1) + 'ms</strong></div>';
+            rows += '</div></td></tr>';
+
+            data.results.forEach((r, i) => {
+                const ext = r.filename.split('.').pop().toLowerCase();
+                const cls = r.status === 'success' ? 'success' : r.status === 'rejected' ? 'rejected' : 'error';
+                rows += '<tr class="summary-row" data-index="' + i + '" style="cursor:pointer;">';
+                rows += '<td class="file-name"><span class="file-ext">' + ext + '</span>' + r.filename + '</td>';
+                rows += '<td><span class="status-tag ' + cls + '">' + r.status + '</span></td>';
+                if (r.status === 'success') {
+                    const lat = r.latency || {};
+                    rows += '<td class="lat-cell">' + (lat.authorization_ms || 0).toFixed(1) + '<span class="muted">ms</span></td>';
+                    rows += '<td class="lat-cell">' + (lat.scanning_ms || 0).toFixed(1) + '<span class="muted">ms</span></td>';
+                    rows += '<td class="lat-cell">' + (lat.inference_ms || 0).toFixed(1) + '<span class="muted">ms</span></td>';
+                    rows += '<td class="lat-cell">' + (lat.total_processing_ms || (lat.authorization_ms || 0) + (lat.scanning_ms || 0) + (lat.inference_ms || 0)).toFixed(1) + '<span class="muted">ms</span></td>';
+                } else if (r.status === 'rejected') {
+                    rows += '<td class="reason-cell" colspan="4" title="' + (r.reason || '') + '">&#x2717; ' + (r.reason || '') + '</td>';
+                    rows += '<td class="lat-cell">--</td>';
+                } else {
+                    rows += '<td class="reason-cell" colspan="4">&#x26a0; error</td>';
+                    rows += '<td class="lat-cell">--</td>';
                 }
+                rows += '</tr>';
             });
-            
-            resultsDiv.innerHTML = html;
+            summaryBody.innerHTML = rows;
+
+            // Click handler for summary rows
+            summaryBody.querySelectorAll('.summary-row').forEach(row => {
+                row.addEventListener('click', function() {
+                    summaryBody.querySelectorAll('.summary-row').forEach(r => r.classList.remove('active'));
+                    this.classList.add('active');
+                    const idx = parseInt(this.dataset.index);
+                    showDetail(idx, resultsData);
+                });
+            });
         }
 
-        function displayLatencySummary(data) {
-            const latencySummaryDiv = document.getElementById('latencySummary');
-            
-            // Calculate averages
-            const successfulResults = data.results.filter(r => r.status === 'success');
-            
-            if (successfulResults.length === 0) {
-                latencySummaryDiv.innerHTML = '<p style="color: #666; text-align: center;">No successful uploads to calculate latency</p>';
+        let modalData = [];
+        let modalIdx = 0;
+
+        function openModal(idx, resultsData) {
+            modalData = resultsData;
+            modalIdx = idx;
+            renderModal();
+            document.getElementById('inspectModal').classList.add('open');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            document.getElementById('inspectModal').classList.remove('open');
+            document.body.style.overflow = '';
+        }
+
+        function renderModal() {
+            const r = modalData[modalIdx];
+            if (!r) { closeModal(); return; }
+            const totalFiles = modalData.length;
+            const ext = r.filename.split('.').pop().toLowerCase();
+            const cls = r.status === 'success' ? 'success' : r.status === 'rejected' ? 'rejected' : 'error';
+
+            document.getElementById('modalFileIcon').className = 'mh-file-icon ' + ext;
+            document.getElementById('modalFileIcon').textContent = ext;
+            document.getElementById('modalFileName').textContent = r.filename;
+            const tag = document.getElementById('modalStatusTag');
+            tag.className = 'status-tag ' + cls;
+            tag.textContent = r.status;
+            document.getElementById('modalCounter').textContent = (modalIdx + 1) + ' / ' + totalFiles;
+            document.getElementById('modalPrev').disabled = modalIdx === 0;
+            document.getElementById('modalNext').disabled = modalIdx >= totalFiles - 1;
+
+            const body = document.getElementById('modalBody');
+            let html = '';
+
+            // Section: File Info
+            html += '<div class="inspect-section">';
+            html += '<div class="is-title">File Information<span class="line"></span></div>';
+            html += '<div class="inspect-grid">';
+            html += '<div class="inspect-field"><div class="if-label">Filename</div><div class="if-value">' + r.filename + '</div></div>';
+            html += '<div class="inspect-field"><div class="if-label">Extension</div><div class="if-value">.' + ext + '</div></div>';
+            const fsize = r.scanning?.file_size_bytes;
+            if (fsize !== undefined && fsize !== null) {
+                const sizeKB = (fsize / 1024).toFixed(1);
+                const sizeMB = (fsize / (1024*1024)).toFixed(2);
+                html += '<div class="inspect-field"><div class="if-label">File Size</div><div class="if-value">' + sizeKB + ' KB <span class="unit">(' + sizeMB + ' MB)</span></div></div>';
+            }
+            const mime = r.scanning?.mime_type;
+            if (mime) {
+                html += '<div class="inspect-field"><div class="if-label">MIME Type</div><div class="if-value">' + mime + '</div></div>';
+            }
+            html += '<div class="inspect-field"><div class="if-label">Status</div><div class="if-value ' + (r.status === 'success' ? 'good' : 'bad') + '">' + r.status.toUpperCase() + '</div></div>';
+            html += '<div class="inspect-field"><div class="if-label">Index</div><div class="if-value">#' + (modalIdx + 1) + ' of ' + totalFiles + '</div></div>';
+            html += '</div></div>';
+
+            if (r.status === 'success') {
+                // Section: Latency Timeline
+                const lat = r.latency || {};
+                const a = lat.authorization_ms || 0;
+                const sc = lat.scanning_ms || 0;
+                const g = lat.inference_ms || 0;
+                const secTotal = lat.total_security_ms || (a + sc);
+                const grandTotal = lat.total_processing_ms || (a + sc + g);
+                const maxVal = Math.max(grandTotal, 1);
+                const aPct = (a / maxVal * 100).toFixed(1);
+                const sPct = (sc / maxVal * 100).toFixed(1);
+                const gPct = (g / maxVal * 100).toFixed(1);
+
+                html += '<div class="inspect-section">';
+                html += '<div class="is-title">Latency Breakdown<span class="line"></span></div>';
+                html += '<div class="inspect-timeline">';
+                html += '<div class="it-seg auth" style="width:' + aPct + '%" title="Authorization: ' + a.toFixed(1) + 'ms"></div>';
+                html += '<div class="it-seg scan" style="width:' + sPct + '%" title="Scanning: ' + sc.toFixed(1) + 'ms"></div>';
+                html += '<div class="it-seg gpu" style="width:' + gPct + '%" title="Inference: ' + g.toFixed(1) + 'ms"></div>';
+                html += '</div>';
+                html += '<div class="inspect-grid">';
+                html += '<div class="inspect-field"><div class="if-label">Authorization</div><div class="if-value">' + a.toFixed(1) + ' <span class="unit">ms</span></div></div>';
+                html += '<div class="inspect-field"><div class="if-label">Scanning</div><div class="if-value">' + sc.toFixed(1) + ' <span class="unit">ms</span></div></div>';
+                html += '<div class="inspect-field"><div class="if-label">Inference</div><div class="if-value">' + g.toFixed(1) + ' <span class="unit">ms</span></div></div>';
+                html += '<div class="inspect-field"><div class="if-label">GPU Model</div><div class="if-value">' + (r.inference?.model || 'mock-vision-v1') + '</div></div>';
+                html += '<div class="inspect-field"><div class="if-label">Security Layer Total</div><div class="if-value good">' + secTotal.toFixed(1) + ' <span class="unit">ms</span></div></div>';
+                html += '<div class="inspect-field"><div class="if-label">Total Processing</div><div class="if-value good">' + grandTotal.toFixed(1) + ' <span class="unit">ms</span></div></div>';
+                html += '</div></div>';
+
+                // Section: Process Steps
+                html += '<div class="inspect-section">';
+                html += '<div class="is-title">Processing Pipeline<span class="line"></span></div>';
+                html += '<div class="inspect-steps">';
+                html += '<div class="inspect-step"><div class="is-dot pass"></div><div class="is-name">Authorization</div><div class="is-latency"><span class="val">' + a.toFixed(1) + '</span> ms</div></div>';
+                html += '<div class="inspect-step"><div class="is-dot pass"></div><div class="is-name">File Scanning</div><div class="is-latency"><span class="val">' + sc.toFixed(1) + '</span> ms</div></div>';
+                html += '<div class="inspect-step"><div class="is-dot pass"></div><div class="is-name">GPU Inference</div><div class="is-latency"><span class="val">' + g.toFixed(1) + '</span> ms</div></div>';
+                html += '</div></div>';
+
+                // Section: Inference Result
+                if (r.inference?.labels) {
+                    html += '<div class="inspect-section">';
+                    html += '<div class="is-title">Inference Result<span class="line"></span></div>';
+                    html += '<div class="inspect-grid">';
+                    html += '<div class="inspect-field full"><div class="if-label">Labels</div><div class="if-value">' + r.inference.labels.join(', ') + '</div></div>';
+                    if (r.inference.model) html += '<div class="inspect-field"><div class="if-label">Model</div><div class="if-value">' + r.inference.model + '</div></div>';
+                    html += '</div></div>';
+                }
+            } else if (r.status === 'rejected') {
+                html += '<div class="inspect-section">';
+                html += '<div class="is-title">Rejection Details<span class="line"></span></div>';
+                html += '<div class="inspect-grid">';
+                html += '<div class="inspect-field"><div class="if-label">Rejected At</div><div class="if-value bad">' + (r.step || 'unknown') + '</div></div>';
+                html += '<div class="inspect-field"><div class="if-label">Reason Code</div><div class="if-value bad">' + (r.reason || 'unknown') + '</div></div>';
+                if (r.latency && r.latency.authorization_ms != null) {
+                    html += '<div class="inspect-field"><div class="if-label">Auth Latency</div><div class="if-value">' + (r.latency.authorization_ms || 0).toFixed(1) + ' <span class="unit">ms</span></div></div>';
+                }
+                html += '</div>';
+                if (r.message) html += '<div class="inspect-msg" style="margin-top:10px;">' + r.message + '</div>';
+                html += '</div>';
+
+                html += '<div class="inspect-section">';
+                html += '<div class="is-title">Processing Pipeline<span class="line"></span></div>';
+                html += '<div class="inspect-steps">';
+                const authPass = r.step !== 'authorization';
+                const scanPass = r.step === 'scanning' || r.step === 'gpu';
+                html += '<div class="inspect-step"><div class="is-dot ' + (authPass ? 'pass' : 'fail') + '"></div><div class="is-name">Authorization</div><div class="is-latency">' + (authPass ? '<span class="val">' + (r.latency?.authorization_ms?.toFixed(1) || '0') + '</span> ms' : '&#x2717; failed') + '</div></div>';
+                html += '<div class="inspect-step"><div class="is-dot ' + (scanPass ? 'pass' : 'fail') + '"></div><div class="is-name">File Scanning</div><div class="is-latency">' + (scanPass ? 'OK' : '&#x2717; failed') + '</div></div>';
+                html += '<div class="inspect-step"><div class="is-dot fail"></div><div class="is-name">GPU Inference</div><div class="is-latency">&#x2014; skipped</div></div>';
+                html += '</div></div>';
+            } else {
+                html += '<div class="inspect-section">';
+                html += '<div class="is-title">Error Details<span class="line"></span></div>';
+                html += '<div class="inspect-msg error">' + (r.error || 'Unknown error occurred during processing.') + '</div>';
+                html += '</div>';
+            }
+
+            body.innerHTML = html;
+        }
+
+        // Modal event listeners
+        document.getElementById('modalClose').addEventListener('click', closeModal);
+        document.getElementById('inspectModal').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (!document.getElementById('inspectModal').classList.contains('open')) return;
+            if (e.key === 'Escape') closeModal();
+            if (e.key === 'ArrowLeft') { document.getElementById('modalPrev').click(); }
+            if (e.key === 'ArrowRight') { document.getElementById('modalNext').click(); }
+        });
+        document.getElementById('modalPrev').addEventListener('click', function() {
+            if (modalIdx > 0) { modalIdx--; renderModal(); updateActiveRow(modalIdx); }
+        });
+        document.getElementById('modalNext').addEventListener('click', function() {
+            if (modalIdx < modalData.length - 1) { modalIdx++; renderModal(); updateActiveRow(modalIdx); }
+        });
+
+        function updateActiveRow(idx) {
+            const rows = document.querySelectorAll('.summary-row');
+            rows.forEach(r => r.classList.remove('active'));
+            if (rows[idx]) rows[idx].classList.add('active');
+        }
+
+        function showDetail(idx, resultsData) {
+            openModal(idx, resultsData);
+        }
+
+        function displayLatency(data) {
+            const success = data.results.filter(r => r.status === 'success');
+            const count = document.getElementById('latencyCount');
+            if (success.length === 0) {
+                count.textContent = 'No data';
+                document.getElementById('latAuth').textContent = '--';
+                document.getElementById('latScan').textContent = '--';
+                document.getElementById('latSecurity').textContent = '--';
+                document.getElementById('latTotal').textContent = '--';
+                ['barAuth','barScan','barSecurity','barTotal'].forEach(id => document.getElementById(id).style.width = '0%');
                 return;
             }
-            
-            const avgAuth = successfulResults.reduce((sum, r) => sum + r.latency.authorization_ms, 0) / successfulResults.length;
-            const avgScan = successfulResults.reduce((sum, r) => sum + r.latency.scanning_ms, 0) / successfulResults.length;
-            const avgSecurity = successfulResults.reduce((sum, r) => sum + r.latency.total_security_ms, 0) / successfulResults.length;
-            const avgTotal = successfulResults.reduce((sum, r) => sum + r.latency.total_processing_ms, 0) / successfulResults.length;
-            
-            let html = '<div class="latency-summary">';
-            html += '<div class="latency-card">';
-            html += '<h3>Avg Authorization</h3>';
-            html += '<div class="value">' + avgAuth.toFixed(2) + '</div>';
-            html += '<div class="unit">ms</div>';
-            html += '</div>';
-            html += '<div class="latency-card">';
-            html += '<h3>Avg Scanning</h3>';
-            html += '<div class="value">' + avgScan.toFixed(2) + '</div>';
-            html += '<div class="unit">ms</div>';
-            html += '</div>';
-            html += '<div class="latency-card">';
-            html += '<h3>Avg Security Layer</h3>';
-            html += '<div class="value">' + avgSecurity.toFixed(2) + '</div>';
-            html += '<div class="unit">ms</div>';
-            html += '</div>';
-            html += '<div class="latency-card">';
-            html += '<h3>Avg Total Processing</h3>';
-            html += '<div class="value">' + avgTotal.toFixed(2) + '</div>';
-            html += '<div class="unit">ms</div>';
-            html += '</div>';
-            html += '</div>';
-            
-            latencySummaryDiv.innerHTML = html;
+            count.textContent = success.length + ' sample(s)';
+            const avg = (key) => success.reduce((s, r) => s + r.latency[key], 0) / success.length;
+            const a = avg('authorization_ms'), sc = avg('scanning_ms'), sec = avg('total_security_ms'), t = avg('total_processing_ms');
+            document.getElementById('latAuth').textContent = a.toFixed(1);
+            document.getElementById('latScan').textContent = sc.toFixed(1);
+            document.getElementById('latSecurity').textContent = sec.toFixed(1);
+            document.getElementById('latTotal').textContent = t.toFixed(1);
+            const max = Math.max(t, 1);
+            document.getElementById('barAuth').style.width = (a / max * 100) + '%';
+            document.getElementById('barScan').style.width = (sc / max * 100) + '%';
+            document.getElementById('barSecurity').style.width = (sec / max * 100) + '%';
+            document.getElementById('barTotal').style.width = '100%';
         }
 
         function displayError(data) {
-            const resultsDiv = document.getElementById('results');
-            
-            let html = '<div class="result-item error">';
-            html += '<h3>Error</h3>';
-            html += '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
-            html += '</div>';
-            
-            resultsDiv.innerHTML = html;
+            document.getElementById('summaryBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px 0;"><div class="result-item error" style="animation:none;display:inline-block;text-align:left;"><div class="ri-header"><span class="ri-name">Error</span><span class="ri-badge error">FAILED</span></div><div class="ri-msg">' + JSON.stringify(data, null, 2) + '</div></div></td></tr>';
+            closeModal();
         }
 
-        // Check services on page load
         checkServices();
-        
-        // Refresh service status every 10 seconds
         setInterval(checkServices, 10000);
     </script>
 </body>

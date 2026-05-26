@@ -2,7 +2,7 @@ import requests
 import time
 
 def test_rate_limiting():
-    """Test rate limiting by sending 6 requests (limit is 5)"""
+    """Test rate limiting by sending 22 requests (limit is 20)"""
     print("\n=== Testing Rate Limiting ===")
     
     url = "http://localhost:5002/authorize"
@@ -14,24 +14,26 @@ def test_rate_limiting():
     }
     
     blocked = False
-    for i in range(1, 7):
+    for i in range(1, 22):
         response = requests.post(url, json=data)
         result = response.json()
         
         if response.status_code == 429:
             print(f"  Request {i}: BLOCKED (429) - Rate limit exceeded [OK]")
             blocked = True
+            break
         elif response.status_code == 200:
-            print(f"  Request {i}: ALLOWED (200) - Requests this minute: {result.get('requests_this_minute')}")
+            if i == 21:
+                print(f"  Request {i}: ALLOWED (200) - Requests this minute: {result.get('requests_this_minute')}")
         else:
             print(f"  Request {i}: Unexpected status {response.status_code}")
         
-        time.sleep(0.3)
+        time.sleep(0.1)
     
     if blocked:
-        print("  [OK] Rate limiting working correctly")
+        print("  [OK] Rate limiting working correctly (blocked after 20 requests)")
     else:
-        print("  [FAIL] Rate limiting NOT working - 6th request should have been blocked")
+        print("  [FAIL] Rate limiting NOT working - 21st request should have been blocked")
     
     return blocked
 
@@ -202,8 +204,8 @@ if __name__ == "__main__":
     test_scanner_with_different_files()
     
     # Test rate limiting (wait a bit to reset counter)
-    print("\n  Waiting 2 seconds before rate limit test...")
-    time.sleep(2)
+    print("\n  Waiting 5 seconds before rate limit test...")
+    time.sleep(5)
     test_rate_limiting()
     
     print("\n" + "=" * 60)
