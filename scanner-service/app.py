@@ -19,6 +19,9 @@ MAX_ASPECT_RATIO = 100
 MAX_COMPRESSION_RATIO = 500
 MAX_ENTROPY_SCORE = 7.5
 MAX_PDF_PAGES = 500
+STEG_CHI_SQUARE_THRESHOLD = 1.0
+STEG_LSB_SKEW_THRESHOLD = 0.15
+STEG_MAX_SAMPLES = 200000
 SCAN_TIMEOUT_SECONDS = 5
 MAX_WORKERS = 50
 
@@ -143,6 +146,55 @@ def check_entropy_threshold(data):
     flagged = score > MAX_ENTROPY_SCORE
     return True, None, None, flagged, score
 
+def check_steganography(img, data):
+    raw_pixels = img.tobytes()
+    sample = raw_pixels
+    if len(sample) > STEG_MAX_SAMPLES:
+        step = len(sample) // STEG_MAX_SAMPLES
+        sample = sample[::step]
+
+    hist = [0] * 256
+    zero_lsb = 0
+    bit0_eq_bit1 = 0
+    for b in sample:
+        hist[b] += 1
+        if b & 1 == 0:
+            zero_lsb += 1
+        if (b & 1) == ((b >> 1) & 1):
+            bit0_eq_bit1 += 1
+
+    chi_sq = 0.0
+    degrees = 0
+    for k in range(128):
+        total = hist[2*k] + hist[2*k+1]
+        if total > 0:
+            expected = total / 2.0
+            chi_sq += (hist[2*k] - expected) ** 2 / expected
+            degrees += 1
+    chi_sq /= max(degrees, 1)
+
+    lsb_zero_ratio = zero_lsb / len(sample)
+    lsb_skew = abs(lsb_zero_ratio - 0.5)
+    bp_corr = bit0_eq_bit1 / len(sample)
+
+    reasons = []
+    if chi_sq < STEG_CHI_SQUARE_THRESHOLD:
+        reasons.append('pairs_too_similar')
+    if bp_corr < 0.52:
+        reasons.append('bitplane_decorrelated')
+    if lsb_skew > STEG_LSB_SKEW_THRESHOLD and bp_corr < 0.55:
+        reasons.append('lsb_skewed')
+
+    flagged = len(reasons) > 0
+    return {
+        'flagged': flagged,
+        'chi_square_score': round(chi_sq, 4),
+        'lsb_zero_ratio': round(lsb_zero_ratio, 4),
+        'bitplane_correlation': round(bp_corr, 4),
+        'samples_analyzed': len(sample),
+        'reasons': reasons,
+    }
+
 # ── Core Scan Logic ──────────────────────────────────────────
 
 def scan_single_file(file_storage):
@@ -206,6 +258,9 @@ def scan_single_file(file_storage):
 
             ent_ok, ent_reason, ent_msg, ent_flagged, ent_score = check_entropy_threshold(data)
             result['checks']['entropy'] = {'passed': True, 'flagged': ent_flagged, 'score': ent_score}
+
+            stego = check_steganography(img, data)
+            result['checks']['steganography'] = {'passed': True, 'flagged': stego['flagged'], 'chi_square_score': stego['chi_square_score'], 'lsb_zero_ratio': stego['lsb_zero_ratio'], 'bitplane_correlation': stego['bitplane_correlation'], 'samples_analyzed': stego['samples_analyzed'], 'reasons': stego['reasons']}
 
             # Metadata detection (stripping ready via strip_image_metadata())
             has_exif = bool(img.info.get('exif'))

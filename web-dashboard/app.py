@@ -16,9 +16,9 @@ adapter = requests.adapters.HTTPAdapter(pool_connections=50, pool_maxsize=50, ma
 session.mount('http://', adapter)
 session.mount('https://', adapter)
 
-GPU_SERVICE_URL = "http://localhost:5001"
-POLICY_SERVICE_URL = "http://localhost:5002"
-SCANNER_SERVICE_URL = "http://localhost:5003"
+GPU_SERVICE_URL = "http://127.0.0.1:5001"
+POLICY_SERVICE_URL = "http://127.0.0.1:5002"
+SCANNER_SERVICE_URL = "http://127.0.0.1:5003"
 
 jobs = {}
 jobs_lock = threading.Lock()
@@ -75,6 +75,7 @@ def process_chunk(chunk, api_key, client_ip):
         'client_ip': client_ip,
         'files': [{'filename': f['filename'], 'file_size': f['file_size'], 'file_hash': f['file_hash']} for f in chunk],
     }
+    auth_start = time.time()
     try:
         auth_resp = session.post(f"{POLICY_SERVICE_URL}/batch-authorize", json=auth_payload, timeout=15)
         auth_data = auth_resp.json()
@@ -82,6 +83,7 @@ def process_chunk(chunk, api_key, client_ip):
         for f in chunk:
             results[f['filename']] = {'status': 'error', 'step': 'authorization', 'error': f'Auth failed: {e}', 'latency': {}}
         return results, True
+    auth_wall_ms = (time.time() - auth_start) * 1000
 
     if not auth_data.get('allowed'):
         for i, f in enumerate(chunk):
@@ -104,7 +106,9 @@ def process_chunk(chunk, api_key, client_ip):
     allowed_files = [f for f in chunk if auth_map.get(f['filename'], {}).get('allowed')]
 
     scan_map = {}
+    scan_wall_ms = 0
     if allowed_files:
+        scan_start = time.time()
         try:
             scan_files = []
             for f in allowed_files:
@@ -119,6 +123,8 @@ def process_chunk(chunk, api_key, client_ip):
             err_msg = f"{type(e).__name__}: {str(e)}"
             for f in allowed_files:
                 scan_map[f['filename']] = {'allowed': False, 'reason': 'scan_error', 'message': err_msg}
+        finally:
+            scan_wall_ms = (time.time() - scan_start) * 1000
 
     scan_passed = [f for f in allowed_files if scan_map.get(f['filename'], {}).get('allowed')]
 
@@ -152,9 +158,9 @@ def process_chunk(chunk, api_key, client_ip):
 
         lat = {}
         if ai.get('allowed'):
-            lat['authorization_ms'] = round(auth_data.get('auth_time_ms', 0) / max(len(chunk), 1), 2)
+            lat['authorization_ms'] = round(auth_wall_ms, 2)
         if si.get('scan_time_ms'):
-            lat['scanning_ms'] = round(si['scan_time_ms'], 2)
+            lat['scanning_ms'] = round(scan_wall_ms, 2)
         if gi.get('latency_ms'):
             lat['inference_ms'] = round(gi['latency_ms'], 2)
         if 'authorization_ms' in lat or 'scanning_ms' in lat:
@@ -244,15 +250,19 @@ def upload_file():
                 f.save(fp)
                 try:
                     size = os.path.getsize(fp)
+                    auth_start = time.time()
                     auth_r = session.post(f"{POLICY_SERVICE_URL}/authorize", json={
                         'api_key': api_key, 'endpoint': '/infer', 'file_size': size, 'client_ip': client_ip,
                     }, timeout=10).json()
+                    auth_ms = (time.time() - auth_start) * 1000
                     if not auth_r.get('allowed'):
                         os.remove(fp)
                         return fn, {'filename': fn, 'status': 'rejected', 'step': 'authorization', 'reason': auth_r.get('reason'),
                                     'message': auth_r.get('message'), 'authorization': auth_r, 'latency': {}}
+                    scan_start = time.time()
                     with open(fp, 'rb') as fh:
                         scan_r = session.post(f"{SCANNER_SERVICE_URL}/scan", files={'file': fh}, timeout=10).json()
+                    scan_ms = (time.time() - scan_start) * 1000
                     if not scan_r.get('allowed'):
                         os.remove(fp)
                         return fn, {'filename': fn, 'status': 'rejected', 'step': 'scanning', 'reason': scan_r.get('reason'),
@@ -262,8 +272,8 @@ def upload_file():
                         gpu_r = session.post(f"{GPU_SERVICE_URL}/infer", files={'file': fh}, timeout=10).json()
                     infer_ms = (time.time() - infer_start) * 1000
                     os.remove(fp)
-                    a_ms = auth_r.get('auth_time_ms', 0)
-                    s_ms = scan_r.get('scan_time_ms', 0)
+                    a_ms = round(auth_ms, 2)
+                    s_ms = round(scan_ms, 2)
                     g_ms = round(infer_ms, 2)
                     return fn, {
                         'filename': fn, 'status': 'success', 'authorization': auth_r, 'scanning': scan_r, 'inference': gpu_r,
@@ -368,5 +378,5 @@ def health():
 
 if __name__ == '__main__':
     print("Starting Web Dashboard...")
-    print("Open http://localhost:8080 in your browser")
+    print("Open http://127.0.0.1:8080 in your browser")
     app.run(host='0.0.0.0', port=8080, debug=True)

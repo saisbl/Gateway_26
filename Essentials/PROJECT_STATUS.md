@@ -1,6 +1,16 @@
 # Project Status Report
 
-**Last Updated**: May 26, 2026
+**Last Updated**: May 26, 2026 — Fixed latency measurement bug
+
+### Service Restart Log
+
+| Timestamp | Action | Status |
+|-----------|--------|--------|
+| 13:15 | Killed all processes on ports 5001-5003, 8080 | ✅ Done |
+| 13:15 | Restarted Mock GPU Service (:5001) | ✅ Healthy |
+| 13:15 | Restarted Policy Service (:5002) | ✅ Healthy |
+| 13:15 | Restarted Scanner Service (:5003) | ✅ Healthy |
+| 13:15 | Restarted Web Dashboard (:8080) | ✅ Healthy |
 **Project**: Gateway Architecture Demo
 **Execution Mode**: Local (Without Docker)
 
@@ -333,6 +343,19 @@ Since Docker is not available on the system, the project is running in local exe
 - ✅ Added security layer latency tracking
 - ✅ Created LOCAL_EXECUTION_GUIDE.md
 - ✅ Created PROJECT_STATUS.md
+
+---
+
+## Latency Fix (May 26)
+
+**Two bugs fixed:**
+
+1. **Service-reported → wall-clock timing** — Auth and scan latency were using service-reported internal times (e.g., `auth_time_ms: 0.37`), excluding HTTP round-trip. Changed both sync and async paths to measure wall-clock from the dashboard (`time.time()` wrapping each HTTP call). Now all latency fields (`authorization_ms`, `scanning_ms`, `inference_ms`, `total_security_ms`, `total_processing_ms`) are measured consistently from the user's perspective.
+
+2. **`localhost` → `127.0.0.1`** — On Windows, `localhost` resolves to IPv6 `::1` first, causing a ~2s timeout per HTTP request before falling back to IPv4. Changed all service URLs in the dashboard from `http://localhost:XXXX` to `http://127.0.0.1:XXXX`. This was the root cause of all previous slow wall-clock times.
+
+**Before fix (wall-clock):** Auth ~2050ms, Scan ~2050ms, Infer ~2100ms, Total ~8400ms  
+**After fix (wall-clock):** Auth ~12ms, Scan ~8ms, Infer ~194ms, Total ~213ms
 
 ---
 
