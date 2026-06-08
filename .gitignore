@@ -3,3 +3,8 @@ __pycache__/
 *.bak
 logs/
 .env
+*.log
+*.err
+# Waitress output redirection files
+scanner-service/scanner-*
+web-dashboard/dashboard-*

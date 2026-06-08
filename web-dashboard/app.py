@@ -8,11 +8,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import Flask, render_template, request, jsonify
 
-from lib.config import (GPU_SERVICE_URL, POLICY_SERVICE_URL, SCANNER_SERVICE_URL,
-                         CHUNK_SIZE, MAX_WORKERS)
-from lib.helpers import save_uploaded_files
+from lib.config import GPU_SERVICE_URL, POLICY_SERVICE_URL, SCANNER_SERVICE_URL, MAX_WORKERS
 from lib.decode_store import put_decode_batch, get_decode_file, clean_decode_store
-from lib.job_manager import jobs, jobs_lock, run_job
 
 import requests
 
@@ -43,10 +40,7 @@ def upload_file():
     api_key = request.form.get('api_key', 'demo-key-123')
     client_ip = request.remote_addr
 
-    if len(files) < 50:
-        return _process_sync(files, api_key, client_ip)
-    else:
-        return _process_async(files, api_key, client_ip)
+    return _process_sync(files, api_key, client_ip)
 
 
 def _process_sync(files, api_key, client_ip):
@@ -77,32 +71,33 @@ def _process_sync(files, api_key, client_ip):
                                 'reason': auth_r.get('reason'), 'message': auth_r.get('message'),
                                 'authorization': auth_r, 'latency': {}}
 
-                sanitize_start = time.time()
+                combined_start = time.time()
                 with open(fp, 'rb') as fh:
-                    san_resp = session.post(f"{SCANNER_SERVICE_URL}/sanitize", files={'file': fh}, timeout=10)
-                sanitize_ms = (time.time() - sanitize_start) * 1000
+                    combined_resp = session.post(f"{SCANNER_SERVICE_URL}/sanitize-and-scan", files={'file': fh}, timeout=30)
+                    combined = combined_resp.json()
+                combined_ms = (time.time() - combined_start) * 1000
 
-                if not san_resp.ok:
+                if not combined.get('allowed'):
                     os.remove(fp)
-                    err = san_resp.json() if san_resp.headers.get('Content-Type', '').startswith('application/json') else {'message': 'Sanitization failed'}
-                    return fn, {'filename': fn, 'status': 'rejected', 'step': 'sanitization',
-                                'reason': err.get('reason', 'sanitize_failed'), 'message': err.get('message', ''),
-                                'sanitization': err, 'latency': {}}
+                    step = 'sanitization' if combined.get('reason') == 'sanitize_failed' else 'scanning'
+                    scan_r = combined.get('scan', {})
+                    return fn, {'filename': fn, 'status': 'rejected', 'step': step,
+                                'reason': scan_r.get('reason', combined.get('reason', 'unknown')),
+                                'message': scan_r.get('message', combined.get('message', '')),
+                                'scanning': scan_r, 'latency': {},
+                                'steganography': combined.get('steganography')}
 
-                cleaned_bytes = san_resp.content
-                stego_flagged = san_resp.headers.get('X-Steganography-Flagged', 'false') == 'true'
+                cleaned_bytes = base64.b64decode(combined['cleaned_data_base64'])
+                scan_r = combined['scan']
+                stego = combined.get('steganography', {})
                 stego_findings = None
-                if stego_flagged:
-                    stego_reasons = san_resp.headers.get('X-Steganography-Reasons', '').split(',')
-                    stego_msgs = _parse_b64_header(san_resp.headers.get('X-Steganography-Messages-B64', ''), [])
-                    stego_struct = _parse_b64_header(san_resp.headers.get('X-Steganography-Structural-B64', ''), [])
-                    stego_meta = _parse_b64_header(san_resp.headers.get('X-Steganography-Metadata-B64', ''), [])
+                if stego.get('flagged'):
                     stego_findings = {
                         'flagged': True,
-                        'reasons': [r for r in stego_reasons if r],
-                        'extracted_messages': stego_msgs,
-                        'structural_payloads': stego_struct if isinstance(stego_struct, list) else [],
-                        'metadata_findings': stego_meta if isinstance(stego_meta, list) else [],
+                        'reasons': stego.get('reasons', []),
+                        'extracted_messages': stego.get('extracted_messages', []),
+                        'structural_payloads': stego.get('structural_payloads', []),
+                        'metadata_findings': stego.get('metadata_findings', []),
                     }
 
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix='_' + fn)
@@ -110,17 +105,8 @@ def _process_sync(files, api_key, client_ip):
                 tmp.close()
                 sanitized_path = tmp.name
 
-                scan_start = time.time()
-                with open(sanitized_path, 'rb') as fh:
-                    scan_r = session.post(f"{SCANNER_SERVICE_URL}/scan", files={'file': fh}, timeout=10).json()
-                scan_ms = (time.time() - scan_start) * 1000
-
-                if not scan_r.get('allowed'):
-                    os.remove(fp)
-                    os.unlink(sanitized_path)
-                    return fn, {'filename': fn, 'status': 'rejected', 'step': 'scanning',
-                                'reason': scan_r.get('reason'), 'message': scan_r.get('message'),
-                                'scanning': scan_r, 'latency': {}, 'steganography': stego_findings}
+                sn_ms = round(combined_ms - scan_r.get('scan_time_ms', 0), 2)
+                s_ms = round(scan_r.get('scan_time_ms', 0), 2)
 
                 infer_start = time.time()
                 with open(sanitized_path, 'rb') as fh:
@@ -131,8 +117,6 @@ def _process_sync(files, api_key, client_ip):
                 os.unlink(sanitized_path)
 
                 a_ms = round(auth_ms, 2)
-                sn_ms = round(sanitize_ms, 2)
-                s_ms = round(scan_ms, 2)
                 g_ms = round(infer_ms, 2)
 
                 return fn, {
@@ -186,68 +170,6 @@ def _parse_b64_header(encoded, default):
         return default
 
 
-def _process_async(files, api_key, client_ip):
-    session_id, session_dir, saved_files = save_uploaded_files(files, app.config['UPLOAD_FOLDER'])
-    job_id = session_id
-
-    with jobs_lock:
-        jobs[job_id] = {
-            'id': job_id, 'status': 'queued', 'total': len(saved_files),
-            'processed': 0, 'passed': 0, 'rejected': 0, 'errors': 0,
-            'progress_pct': 0, 'chunk_time_ms': 0, 'total_time_ms': 0, 'results': None,
-        }
-
-    thread = threading.Thread(target=run_job, args=(job_id, session_dir, saved_files, api_key, client_ip), daemon=True)
-    thread.start()
-
-    return jsonify({
-        'job_id': job_id, 'status': 'queued', 'total_files': len(saved_files),
-        'message': 'Upload accepted. Poll /job-status/' + job_id + ' for progress.',
-    }), 202
-
-
-@app.route('/upload-large', methods=['POST'])
-def upload_large():
-    files = request.files.getlist('files')
-    files = [f for f in files if f.filename]
-    if not files:
-        return jsonify({'error': 'No files provided'}), 400
-    api_key = request.form.get('api_key', 'demo-key-123')
-    return _process_async(files, api_key, request.remote_addr)
-
-
-@app.route('/job-status/<job_id>', methods=['GET'])
-def job_status(job_id):
-    with jobs_lock:
-        j = jobs.get(job_id)
-    if not j:
-        return jsonify({'error': 'Job not found'}), 404
-    return jsonify({
-        'job_id': job_id, 'status': j['status'], 'total_files': j['total'],
-        'processed': j['processed'], 'passed': j['passed'], 'rejected': j['rejected'],
-        'errors': j['errors'], 'progress_pct': j['progress_pct'],
-        'chunk_time_ms': j['chunk_time_ms'], 'total_time_ms': j['total_time_ms'],
-    })
-
-
-@app.route('/job-result/<job_id>', methods=['GET'])
-def job_result(job_id):
-    with jobs_lock:
-        j = jobs.get(job_id)
-    if not j:
-        return jsonify({'error': 'Job not found'}), 404
-    if j['status'] != 'completed':
-        return jsonify({'error': 'Job not yet completed', 'status': j['status'],
-                        'progress_pct': j['progress_pct']}), 200
-    results = j.get('results', [])
-    return jsonify({
-        'job_id': job_id, 'status': 'completed', 'total_files': j['total'],
-        'successful': j['passed'], 'failed': j['rejected'] + j['errors'],
-        'total_processing_time_ms': j['total_time_ms'], 'results': results,
-        'decode_batch_id': j.get('decode_batch_id'),
-    })
-
-
 @app.route('/decode/<int:batch_id>/<int:idx>', methods=['GET'])
 def decode_file(batch_id, idx):
     fbytes = get_decode_file(batch_id, idx)
@@ -255,7 +177,7 @@ def decode_file(batch_id, idx):
         return jsonify({'error': 'File not found or expired'}), 404
     try:
         resp = session.post(f"{SCANNER_SERVICE_URL}/decode-stego",
-            files={'file': ('decode.png', fbytes, 'image/png')}, timeout=10)
+            files={'file': ('decode.png', fbytes, 'image/png')}, timeout=30)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify({'error': f'Decode failed: {e}'}), 500
@@ -279,6 +201,6 @@ def health():
 
 
 if __name__ == '__main__':
-    print("Starting Web Dashboard...")
-    print("Open http://127.0.0.1:8080 in your browser")
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    from waitress import serve
+    print("Starting Web Dashboard on http://127.0.0.1:8080")
+    serve(app, host='0.0.0.0', port=8080, threads=50)

@@ -9,9 +9,9 @@ from flask import Flask, request, jsonify, Response
 from engines.config import (ALLOWED_EXTENSIONS, MAX_FILE_SIZE_BYTES,
                              SCAN_TIMEOUT_SECONDS, MAX_WORKERS)
 from engines.helpers import detect_mime, get_extension
-from engines.scanner import scan_file_wrapper, stats as scanner_stats
+from engines.scanner import scan_single_file, scan_file_wrapper, stats as scanner_stats
 from engines.sanitizer import sanitize_bytes
-from engines.steganography import detect_stego_on_bytes, add_stego_headers
+from engines.steganography import detect_stego_on_bytes_async, add_stego_headers
 
 app = Flask(__name__)
 
@@ -117,7 +117,7 @@ def sanitize():
     data = file.read()
     if len(data) > MAX_FILE_SIZE_BYTES:
         return jsonify({'allowed': False, 'reason': 'file_too_large', 'message': 'File exceeds size limit'}), 413
-    stego = detect_stego_on_bytes(data, file.filename)
+    stego = detect_stego_on_bytes_async(data, file.filename)
     try:
         cleaned = sanitize_bytes(data, file.filename)
         resp = Response(cleaned, mimetype='application/octet-stream')
@@ -131,6 +131,66 @@ def sanitize():
         resp = jsonify({'allowed': False, 'reason': 'sanitize_failed', 'message': str(e)})
         add_stego_headers(resp, stego)
         return resp, 400
+
+
+class _BytesFileProxy:
+    """Minimal file-like object wrapping bytes for scanner functions."""
+    def __init__(self, data, filename):
+        self._data = data
+        self.filename = filename
+        self.content_type = ''
+
+    def read(self):
+        return self._data
+
+
+@app.route('/sanitize-and-scan', methods=['POST'])
+def sanitize_and_scan():
+    """Combined sanitize + scan in one request. Saves one HTTP round-trip per file."""
+    if 'file' not in request.files:
+        return jsonify({'allowed': False, 'reason': 'no_file', 'message': 'No file provided'}), 400
+    f = request.files['file']
+    if f.filename == '':
+        return jsonify({'allowed': False, 'reason': 'no_filename', 'message': 'No file selected'}), 400
+    data = f.read()
+    if len(data) > MAX_FILE_SIZE_BYTES:
+        return jsonify({'allowed': False, 'reason': 'file_too_large', 'message': 'File exceeds size limit'}), 413
+
+    total_start = time.perf_counter()
+
+    stego = detect_stego_on_bytes_async(data, f.filename)
+
+    try:
+        sanitize_start = time.perf_counter()
+        cleaned = sanitize_bytes(data, f.filename)
+        sanitize_time_ms = (time.perf_counter() - sanitize_start) * 1000
+    except Exception as e:
+        return jsonify({
+            'allowed': False, 'reason': 'sanitize_failed', 'message': str(e),
+            'steganography': stego,
+            'time_ms': round((time.perf_counter() - total_start) * 1000, 2),
+        }), 400
+
+    proxy = _BytesFileProxy(cleaned, f.filename)
+    scan_result = scan_single_file(proxy)
+    scanner_stats['total_scanned'] += 1
+    if scan_result.get('allowed'):
+        scanner_stats['total_passed'] += 1
+    else:
+        scanner_stats['total_rejected'] += 1
+    scanner_stats['total_scan_time_ms'] += scan_result.get('scan_time_ms', 0)
+
+    allowed = scan_result.get('allowed', False)
+    return jsonify({
+        'allowed': allowed,
+        'cleaned_data_base64': base64.b64encode(cleaned).decode(),
+        'original_size': len(data),
+        'sanitized_size': len(cleaned),
+        'sanitize_time_ms': round(sanitize_time_ms, 2),
+        'scan': scan_result,
+        'steganography': stego,
+        'time_ms': round((time.perf_counter() - total_start) * 1000, 2),
+    }), 200 if allowed else 403
 
 
 @app.route('/sanitize-batch', methods=['POST'])
@@ -147,7 +207,7 @@ def sanitize_batch():
             results.append(entry)
             continue
         try:
-            stego = detect_stego_on_bytes(data, f.filename)
+            stego = detect_stego_on_bytes_async(data, f.filename)
             cleaned = sanitize_bytes(data, f.filename)
             entry['sanitized'] = True
             entry['data_base64'] = base64.b64encode(cleaned).decode()
@@ -179,7 +239,7 @@ def decode_stego():
     data = file.read()
     if len(data) > MAX_FILE_SIZE_BYTES:
         return jsonify({'error': 'File too large'}), 413
-    stego = detect_stego_on_bytes(data, file.filename)
+    stego = detect_stego_on_bytes_async(data, file.filename)
     result = {
         'filename': file.filename, 'file_size': len(data),
         'mime_type': detect_mime(data),
@@ -225,5 +285,6 @@ def metrics():
 
 
 if __name__ == '__main__':
+    from waitress import serve
     port = int(os.environ.get('PORT', 5003))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    serve(app, host='0.0.0.0', port=port, threads=50)

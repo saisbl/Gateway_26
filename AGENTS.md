@@ -1,7 +1,7 @@
 # AGENTS.md — Project Handoff
 
 **Agent Model**: opencode/big-pickle
-**Last Updated**: 2026-06-08T19:00:00+05:30
+**Last Updated**: 2026-06-08T15:30:00+05:30
 
 ---
 
@@ -12,7 +12,7 @@
 - **Execution Mode**: Local (no Docker — daemon unavailable)
 - **Status**: All 4 services running and healthy
 
-A security gateway demo that protects AI/ML inference services with authentication, rate limiting, file scanning, and observability. Flask-based microservices running as standalone Python processes.
+A security gateway demo that protects AI/ML inference services with authentication, rate limiting, file scanning, and observability. Microservices run under **Waitress** (production WSGI server, 4-8 threads each) as standalone Python processes.
 
 ---
 
@@ -34,8 +34,8 @@ Pipeline: Auth → Sanitize (with stego detection on original) → Scan → Infe
 |---------|------|------|-----------|
 | **Mock GPU Service** | 5001 | Simulated AI inference (100-200ms) | `mock-gpu-service/app.py` |
 | **Policy Service** (v2.1) | 5002 | API key auth, per-IP + per-key rate limiting (100/min each), `X-RateLimit-*` headers, request pattern tracking, concurrency caps (50/tenant), file hash dedup (SHA-256, 1h TTL), HMAC | `policy-service/app.py` (routes) + `policy-service/lib/` |
-| **Scanner Service** | 5003 | Magic byte detection, image bomb detection, dimension limits, entropy flagging, sanitization + **3-engine steganography detection**, parallel batch scan | `scanner-service/app.py` (routes) + `scanner-service/engines/` |
-| **Web Dashboard** | 8080 | Flask UI with bulk upload, latency tracking, service health, inspection modal, disk-backed async batch pipeline, **on-demand decode** | `web-dashboard/app.py` (routes) + `web-dashboard/lib/` |
+| **Scanner Service** | 5003 | Magic byte detection, image bomb detection, dimension limits, entropy flagging, sanitization + **3-engine steganography detection** (lazy quick-check), combined `/sanitize-and-scan` endpoint, parallel batch scan | `scanner-service/app.py` (routes) + `scanner-service/engines/` |
+| **Web Dashboard** | 8080 | Flask UI with bulk upload, latency tracking, service health, inspection modal, **on-demand decode** | `web-dashboard/app.py` (routes) + `web-dashboard/lib/` |
 
 ---
 
@@ -77,12 +77,8 @@ Get-NetTCPConnection -LocalPort 5001,5002,5003,8080 | Stop-Process -Id {$_.Ownin
 | Auth Cache TTL | 60 seconds |
 | File Hash TTL | 3600 seconds (1 hour) |
 | HMAC | Optional (opt-in via `X-Signature` + `X-Timestamp` headers), SHA-256 |
-| Batch Chunk Size | 250 files per chunk |
-| Batch Rate Limit (Policy) | 100 requests/min (separate from interactive) |
 | Rate Limit Headers | `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-IP-RateLimit-*` |
 | Pattern Tracking | Per-key: endpoint/IP/timestamp history, 60s window, `/throttle-status` endpoint |
-| Async Job Routing | <50 files: sync per-file pipeline, ≥50 files: async disk-backed job |
-| Max Batch Auth | 500 files per `/batch-authorize` call |
 
 ## API Keys
 
@@ -142,13 +138,13 @@ Every monolith `app.py` has been split into focused modules under `engines/` or 
 
 - **`scanner-service/engines/`**: config, helpers, validator, sanitizer, steganography (3 engines), scanner
 - **`policy-service/lib/`**: config, helpers, keystore, hmac_utils, ratelimiter, patterns, concurrency, dedup, stats
-- **`web-dashboard/lib/`**: config, helpers, decode_store, pipeline, job_manager
+- **`web-dashboard/lib/`**: config, decode_store
 
 Each `app.py` is now a thin route-only file (no inline logic). Verified end-to-end after restructure.
 
 ### On-Demand Decode Feature ✅
 - Scanner `/decode-stego` endpoint runs all three engines on a file and returns JSON
-- Dashboard stores original file bytes in decode store (5-min TTL, keyed by batch ID) for both sync and async paths
+- Dashboard stores original file bytes in decode store (5-min TTL, keyed by batch ID)
 - Dashboard `/decode/<batch_id>/<idx>` retrieves stored file and calls scanner's decode-stego
 - Frontend inspection modal has "Decode Hidden Message" button that calls `/decode/<batch_id>/<idx>`
 - Extracted messages, structural payloads, and metadata findings displayed inline in the modal
@@ -160,13 +156,6 @@ Each `app.py` is now a thin route-only file (no inline logic). Verified end-to-e
 - `/throttle-status` endpoint for abuse analysis
 - `requests_remaining` in authorize responses
 - Note: Graduated throttling (progressive delays) was implemented and then reverted — `time.sleep()` in the request path added unacceptable latency to a security gateway. Blind rejection at 100/min restored.
-
-### Phase 3 — Dashboard Batch Pipeline ✅
-- Disk-backed chunked async pipeline for 50k-image uploads
-- Three-tier routing: <50 files sync, ≥50 files async job
-- Async job system: `/upload-large` → job_id, `/job-status/<id>`, `/job-result/<id>`
-- `/batch-authorize` endpoint in Policy Service (separate 100 req/min rate pool)
-- Session temp dir auto-cleanup via shutil.rmtree
 
 ### Phase 2 — Policy Service Hardening
 - Rewrote to v2.0: key expiry, per-IP rate limiting (100/min), concurrency caps (50/tenant), file hash dedup (SHA-256, 1h TTL), optional HMAC-SHA256 signing
@@ -211,15 +200,12 @@ Each `app.py` is now a thin route-only file (no inline logic). Verified end-to-e
 │       └── scanner.py              # scan_single_file(), scan_file_wrapper(), stats
 │
 ├── web-dashboard/
-│   ├── app.py                      # Thin Flask routes only
+│   ├── app.py                      # Flask routes (sync only)
 │   ├── templates/index.html        # Full frontend (HTML/CSS/JS)
 │   └── lib/
 │       ├── __init__.py
-│       ├── config.py               # Service URLs, chunk size, workers
-│       ├── helpers.py              # sha256_file, save_uploaded_files, cleanup
-│       ├── decode_store.py         # In-memory decode store with TTL
-│       ├── pipeline.py             # process_one (sync), process_chunk (async)
-│       └── job_manager.py          # Async job system (run_job, jobs dict)
+│       ├── config.py               # Service URLs, workers
+│       └── decode_store.py         # In-memory decode store with TTL
 │
 ├── scripts/                        # Test scripts
 ├── envoy/envoy.yaml                # Envoy config

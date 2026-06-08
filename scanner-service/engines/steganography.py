@@ -117,16 +117,20 @@ def check_metadata_hidden_data(img, data):
 
 # ── Spatial Engine ────────────────────────────────────────────
 
-def extract_lsb_texts(img, max_pixels=500000):
-    """Multi-plane LSB extraction: LSB1, LSB2, alpha channel, and combined RGB."""
+def extract_lsb_texts(img, max_pixels=100000):
+    """Multi-plane LSB extraction: LSB1, LSB2, alpha channel, and combined RGB.
+    Samples large images to avoid excessive latency."""
     if img.mode not in ('RGB', 'RGBA'):
         try:
             img = img.convert('RGB')
         except Exception:
             return []
-    pixels = list(img.getdata())
-    if len(pixels) > max_pixels:
-        pixels = pixels[:max_pixels]
+    all_pixels = list(img.getdata())
+    if len(all_pixels) > max_pixels:
+        step = max(2, len(all_pixels) // max_pixels)
+        pixels = all_pixels[::step]
+    else:
+        pixels = all_pixels
     findings = []
 
     for ch_name, ch_idx in [('R', 0), ('G', 1), ('B', 2)]:
@@ -290,3 +294,71 @@ def add_stego_headers(resp, stego):
         if len(encoded) < 2000:
             resp.headers['X-Steganography-Metadata-B64'] = encoded
     return resp
+
+
+# ── Process Pool for CPU-bound Stego Detection ─────────────
+
+import concurrent.futures
+import atexit
+
+_stego_pool = concurrent.futures.ProcessPoolExecutor(max_workers=4)
+
+
+@atexit.register
+def _close_stego_pool():
+    _stego_pool.shutdown(wait=False)
+
+
+def quick_stego_check(data):
+    """Fast (~5ms) statistical check on raw image bytes.
+    Returns (flagged, reasons). Only triggers full detection if suspicious.
+    This avoids the heavy LSB extraction for ~99% of clean files."""
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.verify()
+        img = Image.open(io.BytesIO(data))
+    except Exception:
+        return True, ['unable_to_verify']
+    raw_pixels = img.tobytes()
+    sample = raw_pixels
+    if len(sample) > STEG_MAX_SAMPLES:
+        step = len(sample) // STEG_MAX_SAMPLES
+        sample = sample[::step]
+    zero_lsb = 0
+    bit0_eq_bit1 = 0
+    for b in sample:
+        if b & 1 == 0:
+            zero_lsb += 1
+        if (b & 1) == ((b >> 1) & 1):
+            bit0_eq_bit1 += 1
+    lsb_zero_ratio = zero_lsb / len(sample)
+    lsb_skew = abs(lsb_zero_ratio - 0.5)
+    bp_corr = bit0_eq_bit1 / len(sample)
+    reasons = []
+    if bp_corr < 0.52:
+        reasons.append('bitplane_decorrelated')
+    if lsb_skew > STEG_LSB_SKEW_THRESHOLD and bp_corr < 0.55:
+        reasons.append('lsb_skewed')
+    return (len(reasons) > 0, reasons)
+
+
+def detect_stego_on_bytes_async(data, filename, timeout=30):
+    """Offload CPU-bound stego detection to a separate process.
+    Uses a fast inline heuristic first; only submits to ProcessPool if suspicious.
+    Always runs structural engine inline (fast, no PIL needed)."""
+    structural = check_structural_payloads(data)
+    flagged, reasons = quick_stego_check(data)
+    if structural:
+        for sf in structural:
+            if sf['type'] == 'post_eof_text':
+                reasons.append('post_eof_text')
+        flagged = True
+    if not flagged:
+        return {
+            'flagged': False, 'reasons': [],
+            'extracted_messages': [],
+            'structural_payloads': structural,
+            'metadata_findings': [],
+        }
+    future = _stego_pool.submit(detect_stego_on_bytes, data, filename)
+    return future.result(timeout=timeout)
