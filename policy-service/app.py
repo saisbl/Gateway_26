@@ -1,239 +1,42 @@
-from flask import Flask, request, jsonify
 import os
 import time
 import hmac
 import hashlib
-from datetime import datetime, timezone
-from collections import defaultdict
+
+from flask import Flask, request, jsonify
+
+from lib.config import (MAX_FILE_SIZE_BYTES, MAX_REQUESTS_PER_MINUTE,
+                         MAX_REQUESTS_PER_MINUTE_PER_IP, ALLOWED_EXTENSIONS,
+                         HMAC_REQUIRED, MAX_BATCH_SIZE, BATCH_REQUESTS_PER_MINUTE)
+from lib.helpers import get_extension, parse_iso_timestamp, now_utc
+from lib.keystore import API_KEYS, validate_api_key
+from lib.hmac_utils import verify_hmac
+from lib.ratelimiter import (check_rate_limits, check_batch_rate_limit,
+                              _get_reset_seconds, _set_rate_limit_headers,
+                              rate_limits, ip_rate_limits)
+from lib.patterns import track_pattern, get_pattern_summary, request_patterns
+from lib.concurrency import check_concurrency, release_concurrency, concurrency_slots
+from lib.dedup import check_file_hash, check_file_hash_only, file_hashes
+from lib.stats import check_daily_quota, daily_quotas, stats as policy_stats
 
 app = Flask(__name__)
 
-# ── Configuration ────────────────────────────────────────────
-
-MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
-MAX_REQUESTS_PER_MINUTE = 100
-MAX_REQUESTS_PER_MINUTE_PER_IP = 100
-MAX_CONCURRENT_PER_TENANT = 50
-CONCURRENCY_TIMEOUT_SECONDS = 30
-DAILY_QUOTA_DEFAULT = 10000
-FILE_HASH_TTL_SECONDS = 3600
-HMAC_REQUIRED = False
-HMAC_TIMESTAMP_WINDOW_SECONDS = 300
-MAX_BATCH_SIZE = 500
-BATCH_REQUESTS_PER_MINUTE = 100
-ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'pdf', 'gif', 'bmp', 'tiff', 'webp']
-ALLOWED_ENDPOINTS = ['/infer', '/upload']
-
-# ── API Key Store ────────────────────────────────────────────
-
-API_KEYS = {
-    'demo-key-123': {
-        'tenant': 'tenant-1',
-        'endpoints': ['/infer', '/upload'],
-        'secret': 'sk-demo-secret-abc-123',
-        'created_at': '2026-01-01T00:00:00Z',
-        'expires_at': '2027-01-01T00:00:00Z',
-        'is_active': True,
-        'key_type': 'production',
-        'daily_limit': 10000,
-    },
-    'test-key-456': {
-        'tenant': 'tenant-2',
-        'endpoints': ['/infer'],
-        'secret': 'sk-test-secret-def-456',
-        'created_at': '2026-01-01T00:00:00Z',
-        'expires_at': '2026-06-01T00:00:00Z',
-        'is_active': True,
-        'key_type': 'development',
-        'daily_limit': 500,
-    },
-    'expired-key-789': {
-        'tenant': 'tenant-3',
-        'endpoints': ['/infer'],
-        'secret': 'sk-expired-secret-789',
-        'created_at': '2025-01-01T00:00:00Z',
-        'expires_at': '2025-06-01T00:00:00Z',
-        'is_active': True,
-        'key_type': 'development',
-        'daily_limit': 100,
-    },
-    'inactive-key-000': {
-        'tenant': 'tenant-4',
-        'endpoints': ['/infer'],
-        'secret': 'sk-inactive-secret-000',
-        'created_at': '2026-01-01T00:00:00Z',
-        'expires_at': '2027-01-01T00:00:00Z',
-        'is_active': False,
-        'key_type': 'development',
-        'daily_limit': 100,
-    },
-}
-
-# ── In-Memory Store ──────────────────────────────────────────
-
-rate_limits = defaultdict(int)
-ip_rate_limits = defaultdict(int)
-batch_rate_limits = defaultdict(int)
-daily_quotas = defaultdict(int)
-concurrency_slots = defaultdict(list)
-file_hashes = defaultdict(dict)
-
-last_day_reset = None
-stats = {
-    'total_authorized': 0,
-    'total_rejected': 0,
-    'total_auth_time_ms': 0.0,
-}
-
-# ── Helpers ──────────────────────────────────────────────────
-
-def get_extension(filename):
-    return filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
-
-def sha256_hash(data):
-    return hashlib.sha256(data).hexdigest() if isinstance(data, bytes) else hashlib.sha256(data.encode()).hexdigest()
-
-def parse_iso_timestamp(ts):
-    try:
-        return datetime.fromisoformat(ts.replace('Z', '+00:00'))
-    except Exception:
-        return None
-
-def now_utc():
-    return datetime.now(timezone.utc)
-
-# ── Key Validation ───────────────────────────────────────────
-
-def validate_api_key(api_key):
-    if not api_key or api_key not in API_KEYS:
-        return False, 'invalid_api_key', 'Invalid or missing API key'
-    key_info = API_KEYS[api_key]
-    if not key_info['is_active']:
-        return False, 'key_inactive', 'API key is deactivated'
-    expires = parse_iso_timestamp(key_info['expires_at'])
-    if expires and now_utc() > expires:
-        return False, 'key_expired', f"API key expired at {key_info['expires_at']}"
-    return True, None, None
-
-# ── HMAC Verification ────────────────────────────────────────
-
-def verify_hmac(api_key, body_bytes, sig_header, ts_header):
-    key_info = API_KEYS.get(api_key)
-    if not key_info:
-        return False, 'invalid_key_for_hmac'
-    secret = key_info.get('secret', '')
-    if not ts_header:
-        return False, 'missing_timestamp'
-    try:
-        ts = int(ts_header)
-        now_s = int(time.time())
-        if abs(now_s - ts) > HMAC_TIMESTAMP_WINDOW_SECONDS:
-            return False, 'timestamp_out_of_window'
-    except ValueError:
-        return False, 'invalid_timestamp'
-    msg = body_bytes + str(ts).encode()
-    expected = hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
-    if not sig_header:
-        return False, 'missing_signature'
-    if not hmac.compare_digest(expected, sig_header):
-        return False, 'signature_mismatch'
-    return True, None
-
-# ── Rate Limiting ────────────────────────────────────────────
-
-def check_rate_limits(api_key, client_ip):
-    current_minute = now_utc().strftime('%Y%m%d%H%M')
-
-    rate_key = f"{api_key}:{current_minute}"
-    current = rate_limits[rate_key] + 1
-    rate_limits[rate_key] = current
-    if current > MAX_REQUESTS_PER_MINUTE:
-        return False, 'rate_limit_exceeded', f"Key rate limit exceeded: {MAX_REQUESTS_PER_MINUTE} req/min"
-
-    ip_key = f"{client_ip}:{current_minute}"
-    ip_current = ip_rate_limits[ip_key] + 1
-    ip_rate_limits[ip_key] = ip_current
-    if ip_current > MAX_REQUESTS_PER_MINUTE_PER_IP:
-        return False, 'ip_rate_limit_exceeded', f"IP rate limit exceeded: {MAX_REQUESTS_PER_MINUTE_PER_IP} req/min from this IP"
-
-    return True, None, None
-
-def check_batch_rate_limit(api_key):
-    current_minute = now_utc().strftime('%Y%m%d%H%M')
-    key = f"{api_key}:batch:{current_minute}"
-    current = batch_rate_limits[key] + 1
-    batch_rate_limits[key] = current
-    if current > BATCH_REQUESTS_PER_MINUTE:
-        return False, current, BATCH_REQUESTS_PER_MINUTE
-    return True, current, BATCH_REQUESTS_PER_MINUTE
-
-def check_daily_quota(tenant):
-    global last_day_reset
-    current_day = now_utc().strftime('%Y%m%d')
-    if last_day_reset != current_day:
-        daily_quotas.clear()
-        last_day_reset = current_day
-    quota_key = f"{tenant}:{current_day}"
-    daily = daily_quotas[quota_key] + 1
-    daily_quotas[quota_key] = daily
-    limit = API_KEYS.get(tenant, {}).get('daily_limit', DAILY_QUOTA_DEFAULT) if tenant in API_KEYS else DAILY_QUOTA_DEFAULT
-    if daily > limit:
-        return False, 'daily_quota_exceeded', f"Daily quota exceeded: {limit} requests"
-    return True, None, None
-
-# ── Concurrency Tracking ─────────────────────────────────────
-
-def check_concurrency(tenant):
-    now = time.time()
-    slots = concurrency_slots[tenant]
-    slots[:] = [ts for ts in slots if now - ts < CONCURRENCY_TIMEOUT_SECONDS]
-    if len(slots) >= MAX_CONCURRENT_PER_TENANT:
-        return False, 'concurrency_limit_exceeded', f"Concurrent request limit reached: {MAX_CONCURRENT_PER_TENANT}"
-    slots.append(now)
-    return True, None, None
-
-def release_concurrency(tenant):
-    slots = concurrency_slots.get(tenant, [])
-    if slots:
-        slots.pop(0)
-
-# ── File Hash Deduplication ──────────────────────────────────
-
-def check_file_hash(tenant, file_hash):
-    if not file_hash:
-        return True, None, None
-    now = time.time()
-    store = file_hashes[tenant]
-    expired = [h for h, t in store.items() if now - t > FILE_HASH_TTL_SECONDS]
-    for h in expired:
-        del store[h]
-    if file_hash in store:
-        return False, 'duplicate_file', 'This exact file was already processed recently (duplicate detected)'
-    store[file_hash] = now
-    return True, None, None
-
-def check_file_hash_only(tenant, file_hash):
-    store = file_hashes.get(tenant, {})
-    return file_hash in store
-
-# ── Routes ───────────────────────────────────────────────────
 
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({
-        'status': 'healthy',
-        'service': 'policy-service',
-        'version': '2.0',
+        'status': 'healthy', 'service': 'policy-service', 'version': '2.1',
         'storage': 'in-memory',
         'features': ['key_expiry', 'ip_rate_limiting', 'concurrency_caps',
-                     'file_hash_dedup', 'hmac_signing'],
+                     'file_hash_dedup', 'hmac_signing', 'pattern_tracking', 'rate_limit_headers'],
         'active_keys': sum(1 for k in API_KEYS.values() if k['is_active']),
         'rate_limit_per_minute': MAX_REQUESTS_PER_MINUTE,
         'ip_rate_limit_per_minute': MAX_REQUESTS_PER_MINUTE_PER_IP,
         'batch_rate_limit_per_minute': BATCH_REQUESTS_PER_MINUTE,
         'max_batch_size': MAX_BATCH_SIZE,
-        'concurrent_limit_per_tenant': MAX_CONCURRENT_PER_TENANT,
+        'concurrent_limit_per_tenant': 50,
     }), 200
+
 
 @app.route('/authorize', methods=['POST'])
 def authorize():
@@ -245,100 +48,98 @@ def authorize():
         file_size = data.get('file_size', 0)
         client_ip = data.get('client_ip', 'unknown')
         file_hash = data.get('file_hash', '')
-        content_type = data.get('content_type', '')
         filename = data.get('filename', '')
 
-        # 1. API key validation (exists, active, not expired)
         key_ok, key_reason, key_msg = validate_api_key(api_key)
         if not key_ok:
-            stats['total_rejected'] += 1
+            policy_stats['total_rejected'] += 1
             return jsonify({'allowed': False, 'reason': key_reason, 'message': key_msg}), 401
 
         key_info = API_KEYS[api_key]
         tenant = key_info['tenant']
 
-        # 2. HMAC verification (optional unless HMAC_REQUIRED)
         sig = request.headers.get('X-Signature', '')
         ts = request.headers.get('X-Timestamp', '')
         if HMAC_REQUIRED or sig:
             body_bytes = request.get_data()
             hmac_ok, hmac_err = verify_hmac(api_key, body_bytes, sig, ts)
             if not hmac_ok:
-                stats['total_rejected'] += 1
+                policy_stats['total_rejected'] += 1
                 return jsonify({'allowed': False, 'reason': hmac_err,
                                 'message': f'HMAC verification failed: {hmac_err}'}), 401
 
-        # 3. Endpoint permission
         if endpoint not in key_info['endpoints']:
-            stats['total_rejected'] += 1
+            policy_stats['total_rejected'] += 1
             return jsonify({'allowed': False, 'reason': 'endpoint_not_allowed',
                             'message': f"Endpoint {endpoint} not allowed for this tenant"}), 403
 
-        # 4. File size
         if file_size > MAX_FILE_SIZE_BYTES:
-            stats['total_rejected'] += 1
+            policy_stats['total_rejected'] += 1
             return jsonify({'allowed': False, 'reason': 'file_too_large',
                             'message': f"File size exceeds {MAX_FILE_SIZE_BYTES // (1024*1024)}MB limit"}), 413
 
-        # 5. Extension check
         if filename:
             ext = get_extension(filename)
             if ext not in ALLOWED_EXTENSIONS:
-                stats['total_rejected'] += 1
+                policy_stats['total_rejected'] += 1
                 return jsonify({'allowed': False, 'reason': 'invalid_extension',
                                 'message': f"Extension '{ext}' not allowed"}), 403
 
-        # 6. Rate limits (per-key and per-IP)
-        rl_ok, rl_reason, rl_msg = check_rate_limits(api_key, client_ip)
+        rl_ok, rl_reason, rl_msg, rl_key_count, rl_ip_count = check_rate_limits(api_key, client_ip)
+        track_pattern(api_key, endpoint, client_ip)
         if not rl_ok:
-            stats['total_rejected'] += 1
-            return jsonify({'allowed': False, 'reason': rl_reason, 'message': rl_msg,
-                            'retry_after_seconds': 60}), 429
+            policy_stats['total_rejected'] += 1
+            reset_sec = _get_reset_seconds()
+            resp = jsonify({'allowed': False, 'reason': rl_reason, 'message': rl_msg,
+                            'retry_after_seconds': reset_sec})
+            resp.status_code = 429
+            resp.headers['Retry-After'] = str(reset_sec)
+            _set_rate_limit_headers(resp, rl_key_count, MAX_REQUESTS_PER_MINUTE,
+                                    rl_ip_count, MAX_REQUESTS_PER_MINUTE_PER_IP)
+            return resp
 
-        # 7. Daily quota
         quota_ok, quota_reason, quota_msg = check_daily_quota(tenant)
         if not quota_ok:
-            stats['total_rejected'] += 1
+            policy_stats['total_rejected'] += 1
             return jsonify({'allowed': False, 'reason': quota_reason, 'message': quota_msg}), 429
 
-        # 8. Concurrency limit (self-cleaning with timeout)
         conc_ok, conc_reason, conc_msg = check_concurrency(tenant)
         if not conc_ok:
-            stats['total_rejected'] += 1
+            policy_stats['total_rejected'] += 1
             return jsonify({'allowed': False, 'reason': conc_reason, 'message': conc_msg}), 429
 
-        # 9. File hash dedup
         dedup_ok, dedup_reason, dedup_msg = check_file_hash(tenant, file_hash)
         if not dedup_ok:
-            stats['total_rejected'] += 1
+            policy_stats['total_rejected'] += 1
             return jsonify({'allowed': False, 'reason': dedup_reason, 'message': dedup_msg}), 409
-
-        current_minute = now_utc().strftime('%Y%m%d%H%M')
-        rate_key = f"{api_key}:{current_minute}"
-        current_requests = rate_limits[rate_key]
 
         current_day = now_utc().strftime('%Y%m%d')
         quota_key = f"{tenant}:{current_day}"
         daily_requests = daily_quotas[quota_key]
+        remaining = max(0, MAX_REQUESTS_PER_MINUTE - rl_key_count)
 
         elapsed = (time.perf_counter() - start) * 1000
-        stats['total_authorized'] += 1
-        stats['total_auth_time_ms'] += elapsed
+        policy_stats['total_authorized'] += 1
+        policy_stats['total_auth_time_ms'] += elapsed
 
-        return jsonify({
-            'allowed': True,
-            'tenant': tenant,
+        resp = jsonify({
+            'allowed': True, 'tenant': tenant,
             'key_type': key_info['key_type'],
             'key_expires_at': key_info['expires_at'],
-            'requests_this_minute': current_requests,
+            'requests_this_minute': rl_key_count,
+            'requests_remaining': remaining,
             'daily_requests': daily_requests,
             'daily_limit': key_info['daily_limit'],
             'auth_time_ms': round(elapsed, 2),
-        }), 200
+        })
+        _set_rate_limit_headers(resp, rl_key_count, MAX_REQUESTS_PER_MINUTE,
+                                rl_ip_count, MAX_REQUESTS_PER_MINUTE_PER_IP)
+        return resp, 200
 
     except Exception as e:
-        stats['total_rejected'] += 1
+        policy_stats['total_rejected'] += 1
         return jsonify({'allowed': False, 'reason': 'internal_error', 'message': str(e)}), 500
+
 
 @app.route('/batch-authorize', methods=['POST'])
 def batch_authorize():
@@ -352,29 +153,36 @@ def batch_authorize():
 
         if not files:
             return jsonify({'allowed': False, 'reason': 'no_files', 'message': 'No files provided', 'files': []}), 400
-
         if len(files) > MAX_BATCH_SIZE:
             return jsonify({'allowed': False, 'reason': 'batch_too_large',
                             'message': f'Batch size {len(files)} exceeds maximum of {MAX_BATCH_SIZE}'}), 413
 
         key_ok, key_reason, key_msg = validate_api_key(api_key)
         if not key_ok:
-            stats['total_rejected'] += len(files)
+            policy_stats['total_rejected'] += len(files)
             return jsonify({'allowed': False, 'reason': key_reason, 'message': key_msg, 'files': []}), 401
 
         key_info = API_KEYS[api_key]
         tenant = key_info['tenant']
 
         if endpoint not in key_info['endpoints']:
-            stats['total_rejected'] += len(files)
+            policy_stats['total_rejected'] += len(files)
             return jsonify({'allowed': False, 'reason': 'endpoint_not_allowed',
                             'message': f"Endpoint {endpoint} not allowed", 'files': []}), 403
 
         brl_ok, brl_current, brl_max = check_batch_rate_limit(api_key)
         if not brl_ok:
-            stats['total_rejected'] += len(files)
-            return jsonify({'allowed': False, 'reason': 'batch_rate_limit_exceeded',
-                            'message': f'Batch rate limit exceeded: {brl_max} batch requests/min', 'files': []}), 429
+            policy_stats['total_rejected'] += len(files)
+            reset_sec = _get_reset_seconds()
+            resp = jsonify({'allowed': False, 'reason': 'batch_rate_limit_exceeded',
+                            'message': f'Batch rate limit exceeded: {brl_max} batch requests/min',
+                            'retry_after_seconds': reset_sec, 'files': []})
+            resp.status_code = 429
+            resp.headers['Retry-After'] = str(reset_sec)
+            resp.headers['X-RateLimit-Limit'] = str(brl_max)
+            resp.headers['X-RateLimit-Remaining'] = '0'
+            resp.headers['X-RateLimit-Reset'] = str(reset_sec)
+            return resp
 
         daily_allowed = True
         for _ in files:
@@ -436,24 +244,29 @@ def batch_authorize():
 
         accepted = sum(1 for r in file_results if r.get('allowed'))
         elapsed = (time.perf_counter() - start) * 1000
-        stats['total_authorized'] += accepted
-        stats['total_rejected'] += rejected_count
-        stats['total_auth_time_ms'] += elapsed
+        policy_stats['total_authorized'] += accepted
+        policy_stats['total_rejected'] += rejected_count
+        policy_stats['total_auth_time_ms'] += elapsed
 
-        return jsonify({
-            'allowed': accepted > 0,
-            'tenant': tenant,
-            'total_files': len(files),
-            'accepted': accepted,
-            'rejected': rejected_count,
+        batch_remaining = max(0, brl_max - brl_current)
+        reset_sec = _get_reset_seconds()
+        resp = jsonify({
+            'allowed': accepted > 0, 'tenant': tenant,
+            'total_files': len(files), 'accepted': accepted, 'rejected': rejected_count,
             'batch_requests_this_minute': brl_current,
             'batch_request_limit': brl_max,
+            'batch_requests_remaining': batch_remaining,
             'auth_time_ms': round(elapsed, 2),
             'files': file_results,
-        }), 200
+        })
+        resp.headers['X-RateLimit-Limit'] = str(brl_max)
+        resp.headers['X-RateLimit-Remaining'] = str(batch_remaining)
+        resp.headers['X-RateLimit-Reset'] = str(reset_sec)
+        return resp, 200
 
     except Exception as e:
         return jsonify({'allowed': False, 'reason': 'internal_error', 'message': str(e), 'files': []}), 500
+
 
 @app.route('/release', methods=['POST'])
 def release():
@@ -466,6 +279,7 @@ def release():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/check-hash', methods=['POST'])
 def check_hash():
     try:
@@ -477,6 +291,7 @@ def check_hash():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/keys', methods=['GET'])
 def list_keys():
     key_list = []
@@ -484,16 +299,13 @@ def list_keys():
         expires = parse_iso_timestamp(info['expires_at'])
         expired = expires is not None and now_utc() > expires
         key_list.append({
-            'key_id': kid,
-            'tenant': info['tenant'],
-            'key_type': info['key_type'],
-            'is_active': info['is_active'],
-            'is_expired': expired,
-            'expires_at': info['expires_at'],
-            'endpoints': info['endpoints'],
-            'daily_limit': info['daily_limit'],
+            'key_id': kid, 'tenant': info['tenant'],
+            'key_type': info['key_type'], 'is_active': info['is_active'],
+            'is_expired': expired, 'expires_at': info['expires_at'],
+            'endpoints': info['endpoints'], 'daily_limit': info['daily_limit'],
         })
     return jsonify({'keys': key_list, 'total': len(key_list)}), 200
+
 
 @app.route('/sign', methods=['POST'])
 def sign():
@@ -511,25 +323,58 @@ def sign():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @app.route('/metrics', methods=['GET'])
 def metrics():
-    avg_time = round(stats['total_auth_time_ms'] / max(stats['total_authorized'] + stats['total_rejected'], 1), 2)
-    active_concurrency = {k: len([ts for ts in v if time.time() - ts < CONCURRENCY_TIMEOUT_SECONDS]) for k, v in concurrency_slots.items()}
+    avg_time = round(policy_stats['total_auth_time_ms'] / max(policy_stats['total_authorized'] + policy_stats['total_rejected'], 1), 2)
+    active_conc = {k: len([ts for ts in v if time.time() - ts < 30]) for k, v in concurrency_slots.items()}
     return jsonify({
-        'service': 'policy-service',
-        'version': '2.0',
-        'total_authorized': stats['total_authorized'],
-        'total_rejected': stats['total_rejected'],
-        'pass_rate': round(stats['total_authorized'] / max(stats['total_authorized'] + stats['total_rejected'], 1) * 100, 2),
+        'service': 'policy-service', 'version': '2.1',
+        'total_authorized': policy_stats['total_authorized'],
+        'total_rejected': policy_stats['total_rejected'],
+        'pass_rate': round(policy_stats['total_authorized'] / max(policy_stats['total_authorized'] + policy_stats['total_rejected'], 1) * 100, 2),
         'avg_auth_time_ms': avg_time,
         'rate_limit_keys': len(rate_limits),
         'ip_rate_limit_keys': len(ip_rate_limits),
-        'active_concurrency_slots': active_concurrency,
+        'active_concurrency_slots': active_conc,
         'file_hashes_stored': sum(len(v) for v in file_hashes.values()),
         'file_hash_tenants': len(file_hashes),
         'active_keys': sum(1 for k in API_KEYS.values() if k['is_active']),
         'expired_keys': sum(1 for k in API_KEYS.values() if parse_iso_timestamp(k['expires_at']) and now_utc() > parse_iso_timestamp(k['expires_at'])),
+        'pattern_tracked_keys': len(request_patterns),
     }), 200
+
+
+@app.route('/throttle-status', methods=['GET'])
+def throttle_status():
+    api_key = request.args.get('api_key', '')
+    client_ip = request.args.get('client_ip', '')
+    result = {}
+    if api_key:
+        result['key'] = {'summary': get_pattern_summary(api_key)}
+    if client_ip:
+        current_minute = now_utc().strftime('%Y%m%d%H%M')
+        ip_key = f"{client_ip}:{current_minute}"
+        ip_count = ip_rate_limits.get(ip_key, 0)
+        usage_pct = round(ip_count / MAX_REQUESTS_PER_MINUTE_PER_IP * 100, 1)
+        result['ip'] = {
+            'requests_this_minute': ip_count,
+            'limit': MAX_REQUESTS_PER_MINUTE_PER_IP,
+            'usage_pct': usage_pct,
+            'at_limit': ip_count >= MAX_REQUESTS_PER_MINUTE_PER_IP,
+        }
+    if not api_key and not client_ip:
+        now = time.time()
+        all_patterns = {k: get_pattern_summary(k) for k in list(request_patterns.keys())[:20]}
+        hourly_keys = len([k for k, v in rate_limits.items()
+                          if k.split(':')[-1].startswith(now_utc().strftime('%Y%m%d%H'))])
+        result['overview'] = {
+            'total_keys_tracked': len(request_patterns),
+            'sample_keys': all_patterns,
+            'active_minute_buckets': hourly_keys,
+        }
+    return jsonify(result), 200
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5002))

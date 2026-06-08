@@ -641,6 +641,23 @@
         }
         .inspect-msg.error { background: var(--error-bg); border-color: rgba(239,68,68,0.2); color: var(--error); }
 
+        .decode-btn {
+            background: var(--accent);
+            color: #fff; border: none; padding: 8px 16px; border-radius: var(--radius-sm);
+            font-size: 0.82rem; cursor: pointer; transition: var(--transition);
+            display: inline-flex; align-items: center; gap: 6px;
+        }
+        .decode-btn:hover { background: var(--accent-light); }
+        .decode-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .decode-msg {
+            padding: 4px 8px; margin: 2px 0; border-radius: 4px;
+            background: var(--card-muted-bg); font-family: monospace; font-size: 0.78rem;
+        }
+        .decode-msg .dm-channel { color: var(--accent-light); font-weight: 600; margin-right: 6px; }
+        .decode-msg .dm-text { color: var(--text-primary); word-break: break-all; }
+        .decode-msg.structural .dm-channel { color: var(--warning); }
+        .decode-msg.metadata .dm-channel { color: var(--info); }
+
         /* Summary Table */
         .summary-table-wrap { overflow-x: auto; }
         .summary-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
@@ -1122,6 +1139,7 @@
 
             // Store results data for detail view
             let resultsData = data.results;
+            window._decodeBatchId = data.decode_batch_id;
 
             // Build summary table
             let rows = '<tr class="summary-header-row"><td colspan="6" style="padding:0 0 8px 0;"><div class="summary-bar" style="margin:0;padding:0;background:none;border:none;">';
@@ -1161,17 +1179,19 @@
                     summaryBody.querySelectorAll('.summary-row').forEach(r => r.classList.remove('active'));
                     this.classList.add('active');
                     const idx = parseInt(this.dataset.index);
-                    showDetail(idx, resultsData);
+                    showDetail(idx, resultsData, window._decodeBatchId);
                 });
             });
         }
 
         let modalData = [];
         let modalIdx = 0;
+        let modalBatchId = null;
 
-        function openModal(idx, resultsData) {
+        function openModal(idx, resultsData, batchId) {
             modalData = resultsData;
             modalIdx = idx;
+            modalBatchId = batchId;
             renderModal();
             document.getElementById('inspectModal').classList.add('open');
             document.body.style.overflow = 'hidden';
@@ -1269,6 +1289,20 @@
                     if (r.inference.model) html += '<div class="inspect-field"><div class="if-label">Model</div><div class="if-value">' + r.inference.model + '</div></div>';
                     html += '</div></div>';
                 }
+
+                // Section: Steganography Decode
+                html += '<div class="inspect-section">';
+                html += '<div class="is-title">Steganography Analysis<span class="line"></span></div>';
+                if (r.steganography && r.steganography.flagged) {
+                    html += '<div class="is-value" style="color:var(--warning);font-weight:600;margin-bottom:8px;">&#x26a0; Suspicious indicators found during initial scan.</div>';
+                }
+                html += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
+                if (modalBatchId != null && modalBatchId !== undefined) {
+                    html += '<button class="decode-btn" id="decodeBtn" onclick="decodeCurrentFile()">&#x1f50d; Decode Hidden Message</button>';
+                }
+                html += '</div>';
+                html += '<div id="decodeResults" style="font-size:0.82rem;line-height:1.6;"></div>';
+                html += '</div>';
             } else if (r.status === 'rejected') {
                 html += '<div class="inspect-section">';
                 html += '<div class="is-title">Rejection Details<span class="line"></span></div>';
@@ -1325,8 +1359,57 @@
             if (rows[idx]) rows[idx].classList.add('active');
         }
 
-        function showDetail(idx, resultsData) {
-            openModal(idx, resultsData);
+        function showDetail(idx, resultsData, batchId) {
+            openModal(idx, resultsData, batchId);
+        }
+
+        function decodeCurrentFile() {
+            if (modalBatchId == null || modalBatchId === undefined) return;
+            const btn = document.getElementById('decodeBtn');
+            const area = document.getElementById('decodeResults');
+            btn.disabled = true;
+            btn.textContent = 'Decoding...';
+            area.innerHTML = '<div style="color:var(--text-muted);padding:8px;">Running steganographic analysis...</div>';
+            fetch('/decode/' + modalBatchId + '/' + modalIdx)
+                .then(r => r.json())
+                .then(data => {
+                    btn.textContent = 'Decode Hidden Message';
+                    btn.disabled = false;
+                    if (data.error) {
+                        area.innerHTML = '<div class="inspect-msg error">' + data.error + '</div>';
+                        return;
+                    }
+                    let h = '';
+                    if (data.flagged) {
+                        h += '<div class="is-value" style="color:var(--warning);font-weight:600;margin-bottom:8px;">&#x26a0; Suspicious: ' + data.reasons.join(', ') + '</div>';
+                        if (data.extracted_messages && data.extracted_messages.length) {
+                            h += '<div style="margin-bottom:8px;"><strong>Extracted Messages:</strong></div>';
+                            data.extracted_messages.forEach(m => {
+                                h += '<div class="decode-msg"><span class="dm-channel">[' + m.channel + ']</span> <span class="dm-text">"' + m.text + '"</span></div>';
+                            });
+                        }
+                        if (data.structural_payloads && data.structural_payloads.length) {
+                            h += '<div style="margin-top:10px;margin-bottom:8px;"><strong>Structural Findings:</strong></div>';
+                            data.structural_payloads.forEach(s => {
+                                h += '<div class="decode-msg structural"><span class="dm-channel">[' + (s.type || 'payload') + ']</span> <span class="dm-text">' + (s.text || s.description || '') + '</span></div>';
+                            });
+                        }
+                        if (data.metadata_findings && data.metadata_findings.length) {
+                            h += '<div style="margin-top:10px;margin-bottom:8px;"><strong>Metadata Findings:</strong></div>';
+                            data.metadata_findings.forEach(m => {
+                                h += '<div class="decode-msg metadata"><span class="dm-channel">[' + (m.field || m.type || 'meta') + ']</span> <span class="dm-text">' + (m.content || m.description || '') + '</span></div>';
+                            });
+                        }
+                    } else {
+                        h = '<div class="is-value" style="color:var(--success);">No hidden content detected.</div>';
+                    }
+                    area.innerHTML = h;
+                })
+                .catch(err => {
+                    btn.textContent = 'Decode Hidden Message';
+                    btn.disabled = false;
+                    area.innerHTML = '<div class="inspect-msg error">Decode failed: ' + err.message + '</div>';
+                });
         }
 
         function displayLatency(data) {

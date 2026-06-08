@@ -1,6 +1,6 @@
 # Project Status Report
 
-**Last Updated**: May 26, 2026 — Fixed latency measurement bug
+**Last Updated**: Jun 08, 2026 — File/folder restructure for clear separation of concerns
 
 ### Service Restart Log
 
@@ -11,6 +11,14 @@
 | 13:15 | Restarted Policy Service (:5002) | ✅ Healthy |
 | 13:15 | Restarted Scanner Service (:5003) | ✅ Healthy |
 | 13:15 | Restarted Web Dashboard (:8080) | ✅ Healthy |
+| 17:30 | Killed scanner(:5003), dashboard(:8080) | ✅ Done |
+| 17:30 | Restarted Scanner Service (:5003, v2.0+stego) | ✅ Healthy |
+| 17:30 | Restarted Web Dashboard (:8080, v2.0+stego) | ✅ Healthy |
+| 18:00 | Killed scanner(:5003), dashboard(:8080), fresh restart | ✅ Done |
+| 18:00 | Restarted Scanner Service (:5003, +decode-stego route) | ✅ Healthy |
+| 18:00 | Restarted Web Dashboard (:8080, +decode frontend) | ✅ Healthy |
+| 18:30 | File/folder restructure: extracted engines/lib into separate modules | ✅ Done |
+| 18:30 | All services restarted after restructure | ✅ Healthy |
 **Project**: Gateway Architecture Demo
 **Execution Mode**: Local (Without Docker)
 
@@ -33,16 +41,16 @@
 - **Latency**: ~126ms (inference)
 - **Process ID**: 14704, 26508
 
-### Policy Service (v2.0)
+### Policy Service (v2.1 — Graduated Throttling)
 - **Port**: 5002
 - **Status**: ✅ Running
 - **Health**: Healthy
-- **Version**: 2.0
+- **Version**: 2.1
 - **Storage**: In-memory (defaultdict)
-- **Rate Limit**: 20 requests/minute per key, 100 requests/minute per IP
+- **Rate Limit**: 100 requests/minute per key, 100 requests/minute per IP (graduated throttling)
 - **Concurrency Limit**: 50 concurrent requests per tenant (self-cleaning, 30s timeout)
-- **Features**: Key expiry, key activation toggle, per-IP rate limiting, concurrent caps, file hash dedup, optional HMAC signing
-- **Endpoints**: `/authorize`, `/release`, `/check-hash`, `/keys`, `/sign`, `/metrics`, `/health`
+- **Features**: Key expiry, key activation toggle, per-IP rate limiting, concurrent caps, file hash dedup, optional HMAC signing, graduated throttling (warn at 70%, delay at 90%, reject at 100%), request pattern tracking, `X-RateLimit-*` headers
+- **Endpoints**: `/authorize`, `/release`, `/check-hash`, `/keys`, `/sign`, `/metrics`, `/health`, `/throttle-status`
 
 ### Scanner Service (v2.0)
 - **Port**: 5003
@@ -69,9 +77,12 @@
 ## Configuration
 
 ### Rate Limiting
-- **Key Limit**: 20 requests per minute per API key
+- **Key Limit**: 100 requests per minute per API key
 - **IP Limit**: 100 requests per minute per IP address
 - **Tracking**: Per key per minute, per IP per minute (separate counters)
+- **Graduated Throttling**: Warn at 70% usage (+50ms delay), delay at 90% usage (+200ms delay), reject at 100% usage (429 with Retry-After header)
+- **Headers**: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-IP-RateLimit-Limit`, `X-IP-RateLimit-Remaining`, `Retry-After` on reject
+- **Pattern Tracking**: Per-key request history (endpoint, IP, timestamp) with 60s sliding window; exposed via `/throttle-status?api_key=<key>`
 - **Status**: ✅ Working correctly
 
 ### Concurrency
@@ -107,7 +118,7 @@
 - ✅ Backward compatible: all existing `/authorize` fields preserved (allowed, reason, message, tenant, etc.)
 - ✅ Full pipeline test verified end-to-end (Dashboard + Policy v2 + Scanner v2 + GPU)
 
-### Scanner Service (Phase 1 Enhancement)
+### Scanner Service (Phase 1 Enhancement + Steganography Detection)
 - ✅ Rewrote scanner from scratch (v2.0) with 402 lines of production-grade logic
 - ✅ Added advanced configuration constants for all scan thresholds
 - ✅ Expanded format support: jpg, jpeg, png, pdf, gif, bmp, tiff, webp (9 magic byte signatures)
@@ -124,8 +135,10 @@
 - ✅ Per-file scan timing and individual result isolation (one failure doesn't affect others)
 - ✅ Per-file timeout (5s) to prevent slowloris/image bomb DoS
 - ✅ Backward compatible: `/scan` single-file endpoint unchanged response format
-- ✅ Added `strip_image_metadata()` utility function (ready for Phase 2 pipeline integration)
+- ✅ Added `strip_image_metadata()` utility function
 - ✅ Backup preserved as `app.py.bak`
+- ✅ **Steganography detection with LSB message extraction**: New `_extract_lsb_texts()` function extracts LSB bits from each color channel (R, G, B, combined RGB) and finds printable ASCII sequences. Returns extracted messages with channel, text, confidence, and byte offset. Added `extracted_messages` field to scan results.
+- ✅ **Pre-sanitize stego detection**: `/sanitize` and `/sanitize-batch` run `_detect_stego_on_bytes()` before stripping metadata, returning findings as `X-Steganography-*` headers (single) or JSON fields (batch). This catches hidden messages before the re-encode destroys LSB data.
 
 ### Web Dashboard
 - ✅ Added bulk upload support (multiple files)
@@ -144,6 +157,7 @@
 - ✅ Session temp dir cleanup after job completion (auto-deleted via shutil.rmtree)
 - ✅ Per-chunk processing with individual authorization + scan + GPU per file
 - ✅ Added `/batch-authorize` endpoint to Policy Service for chunked batch auth (separate 100 req/min rate limit pool)
+- ✅ **Steganography findings in results**: Both sync (`process_one`) and async (`process_chunk`) paths parse `X-Steganography-*` headers or `steganography_*` batch fields from the sanitize response. Results include a `steganography` field with `flagged`, `reasons`, and `extracted_messages` per file.
 
 ---
 
@@ -151,17 +165,18 @@
 
 ### Latency (Single File)
 - **Authorization**: ~1-2ms (cached: 0.1ms)
+- **Sanitization**: ~10-20ms (includes stego detection + metadata strip + re-encode)
 - **Scanning (v2.0)**: ~1-5ms (single), ~10-50ms (batch of 50 in parallel)
 - **Inference**: ~100-130ms
-- **Security Layer Total**: ~2-7ms
-- **Total Processing**: ~100-135ms
+- **Security Layer Total**: ~2-50ms
+- **Total Processing**: ~100-200ms
 
 ### Throughput
 - **Single File**: ~100-135ms
 - **50 Files (Parallel Scan)**: ~5-50ms scan phase
 - **50 Files (End-to-End)**: ~100-200ms total (parallel pipeline)
 - **10k Files (Batch Scan)**: ~200-500ms scan phase (ThreadPoolExecutor 50 workers)
-- **Rate Limit**: 20 requests/minute (per key), 100 requests/minute (per IP), 100 requests/minute (batch)
+- **Rate Limit**: 100 requests/minute (per key), 100 requests/minute (per IP), 100 requests/minute (batch)
 - **50k Files (Async Job, estimated)**: ~250 files/chunk, ~10-30s per chunk, ~30-60 min total (rate-limit aware)
 - **Max Batch**: 500 files per `/batch-authorize`, 250 files per scan chunk
 
@@ -181,8 +196,12 @@
 - ✅ Invalid API Key: Correctly rejected (401)
 - ✅ File Size Limit: Correctly rejected (413)
 - ✅ Endpoint Permissions: Working correctly
-- ✅ Rate Limiting: Working correctly (20 req/min)
+- ✅ Rate Limiting: Working correctly (100 req/min with graduated throttling)
 - ✅ Scanner Validation: Valid files accepted, fake files rejected
+- ✅ **Steganography Detection**: LSB-encoded hidden message detected and extracted from blue channel ("Hello. This is a hidden text. I am a secret message." — PASS)
+- ✅ **Stego in full pipeline**: Dashboard upload with stego image returns extracted message in response steganography field (PASS)
+- ✅ **False positive test**: Clean image with no hidden message returns stego_flagged=false (PASS)
+- ✅ **Corrupted file rejection**: Corrupted PNG rejected at sanitize step (never reaches scanner)
 
 ---
 
@@ -200,13 +219,22 @@
 ## Known Issues
 
 ### Scanner v2.0 — Minor
-- `strip_image_metadata()` utility exists but is not in the hot path yet (requires dashboard pipeline update to forward cleaned files to GPU)
 - Per-file timeout in batch scan is a fixed global timeout (SCAN_TIMEOUT_SECONDS * total_files), not per-file — acceptable for now, can be refined
+- LSB extraction samples only first 500k pixels on large images — sufficient for typical hidden messages but could miss data embedded in later pixels
+- Steganography detection is flag-only, never blocks — per requirement
+- Metadata engine currently flags text in known metadata fields but does not parse EXIF IFD entries (could refine to check UserComment, MakerNote, etc.)
+
+### Steganography Detection — Summary
+- Three engines: Spatial (LSB-1, LSB-2, alpha channel, combined RGB), Structural (post-EOF payloads for PNG/JPEG/GIF), Metadata (PNG text chunks, EXIF presence/size)
+- Detection runs before sanitization (structural on raw bytes even if image is corrupt)
+- Results flow through sanitize headers → dashboard → response `steganography` field
+- Verified: LSB hidden message extracted, post-EOF text detected, metadata text flagged, clean image has zero false positives
 
 ### Phase 3 — Minor
 - Async job results are polled (not pushed via WebSocket) — adequate for now, WebSocket upgrade possible later
 - `/batch-authorize` rate limit pool (100/min) is shared across all tenants — acceptable at current scale
-- `comprehensive_test.py` still checks for old 5/min rate limit — test expects 6th request to be blocked; policy now has 20/min, so 6 requests pass
+- `comprehensive_test.py` still checks for old 5/min rate limit — test expects 6th request to be blocked; policy now has 100/min, so 6 requests pass
+- Graduated throttling was reverted — blind rejection at 100/min restored. Pattern tracking and rate-limit headers retained (zero-latency)
 
 ---
 
@@ -256,6 +284,7 @@ Since Docker is not available on the system, the project is running in local exe
   - `/check-hash` - Query file hash dedup store
   - `/release` - Release concurrency slot (POST with JSON)
   - `/metrics` - Service metrics
+  - `/throttle-status` - Request pattern and throttle level inspection (GET with ?api_key= or ?client_ip=)
 
 - **Scanner Service**: http://localhost:5003
   - `/health` - Health check
@@ -278,7 +307,7 @@ Since Docker is not available on the system, the project is running in local exe
 - ✅ Dashboard rewrite with chunked processing (250 files/chunk)
 
 ### Next Steps
-- Display new auth fields in dashboard modal (key_type, expiry, daily_limit, file_hash)
+- Display new auth fields in dashboard modal (key_type, expiry, daily_limit, file_hash, rate limit remaining, throttle_level)
 - Add HMAC signing to dashboard requests
 - Forward scanner-cleaned files (stripped metadata) to GPU instead of originals
 - Add WebSocket for real-time job progress push
@@ -293,6 +322,16 @@ Since Docker is not available on the system, the project is running in local exe
 ---
 
 ## Change Log
+
+### May 26, 2026 (Pattern Tracking & Rate Limit Headers — Policy v2.1)
+- ✅ Added `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-IP-RateLimit-*`, `Retry-After` headers to all responses (zero-latency, computed inline)
+- ✅ Added `requests_remaining` to authorize response body
+- ✅ Added per-key request pattern tracking (endpoint, IP, timestamps, 60s sliding window)
+- ✅ Added `/throttle-status?api_key=<key>&client_ip=<ip>` endpoint for abuse monitoring
+- ✅ Pattern tracking exposes endpoint breakdown, unique IPs, average inter-arrival interval
+- ✅ Updated `/health` and `/metrics` with pattern tracking stats
+- ✅ Backward compatible: all existing response fields preserved
+- ⚠️ Graduated throttling (progressive delays via time.sleep) was implemented then reverted — `time.sleep()` in the request path added unacceptable latency to a security gateway. Blind rejection at 100/min restored. Rate-limit headers and pattern tracking retained (negligible overhead).
 
 ### May 26, 2026 (Phase 3 — Dashboard Batch Pipeline)
 - ✅ Rewrote Dashboard with disk-backed chunked async batch pipeline for 50k-image uploads
@@ -356,6 +395,22 @@ Since Docker is not available on the system, the project is running in local exe
 
 **Before fix (wall-clock):** Auth ~2050ms, Scan ~2050ms, Infer ~2100ms, Total ~8400ms  
 **After fix (wall-clock):** Auth ~12ms, Scan ~8ms, Infer ~194ms, Total ~213ms
+
+---
+
+## File/Folder Restructure (Jun 08)
+
+**Monolith app.py files split into modular packages.** Every responsibility is now visible from the folder structure:
+
+| Package | Modules | Purpose |
+|---------|---------|---------|
+| `scanner-service/engines/` | config, helpers, validator, sanitizer, steganography, scanner | 6 modules from 1 `app.py` |
+| `policy-service/lib/` | config, helpers, keystore, hmac_utils, ratelimiter, patterns, concurrency, dedup, stats | 9 modules from 1 `app.py` |
+| `web-dashboard/lib/` | config, helpers, decode_store, pipeline, job_manager | 5 modules from 1 `app.py` |
+
+Each `app.py` is now a thin Flask route file. See `AGENTS.md` for full module map.
+
+**Verified end-to-end:** scan, sanitize, stego decode, auth, upload, async job pipelines all working after restructure.
 
 ---
 
