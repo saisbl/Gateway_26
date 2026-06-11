@@ -1,0 +1,187 @@
+# Possible Image-Level Threats
+
+## 1. Steganography
+
+### LSB (Least Significant Bit) Embedding
+- Data hidden in the lowest bit of each colour channel (R, G, B, Alpha)
+- Imperceptible to human eye — pixel value changes by ±1
+- Detection: bit-plane correlation, chi-square analysis, LSB skew
+- Mitigation: LSB extraction + ASCII text scanning (spatial engine)
+
+### LSB-2 / Bit-1 Plane
+- Data hidden in the second-least significant bit
+- More robust than LSB-1, harder to detect statistically
+- Detection: extract bit-1 plane and scan for text
+- Mitigation: multi-plane extraction (spatial engine)
+
+### Palette-Based Hiding
+- In palette (P) mode images, pixel values are indices into a colour lookup table
+- Attacker reorders palette entries so indices encode a message
+- Pixel values don't change visually — only the palette order
+- Detection: not currently implemented
+- **Mitigation: sanitizer converts P mode to RGB, resolving palette to absolute colour values**
+
+### Alpha Channel Hiding
+- Data hidden in the alpha (transparency) channel
+- Fully transparent or fully opaque pixels can have modified alpha LSB without visible effect
+- Detection: extract alpha LSB plane
+- Mitigation: RGBA→RGB conversion strips alpha (JPEG), or 8-bit RGBA normalisation
+
+### Post-EOF Payloads
+- Data appended after end-of-file markers (PNG IEND, JPEG EOI, GIF trailer)
+- Image parsers ignore trailing data, but it survives sanitization that re-encodes via PIL
+- Detection: scan raw bytes for data after known EOF signatures
+- Mitigation: structural engine finds and reports post-EOF text
+
+### Metadata Hiding
+- Data embedded in EXIF fields (GPS coordinates, camera make/model, thumbnails)
+- PNG text chunks (tEXt, zTXt, iTXt)
+- Comment fields, ICC profiles, XMP metadata
+- Detection: inspect metadata field contents and sizes
+- Mitigation: metadata engine reports findings; sanitizer strips all metadata via re-encode
+
+### Colour Depth Abuse
+- 16-bit per channel images — LSB data in the lower 8 bits is invisible in standard 8-bit viewers
+- The extra byte per channel doubles hiding capacity per pixel
+- Detection: extract LSB from all 16 bits (spatial engine works on raw bytes)
+- **Mitigation: sanitizer converts all images to 8-bit RGB/RGBA, discarding upper bit planes**
+
+### Non-Standard Colour Modes
+- CMYK, YCbCr, LAB, 32-bit float (F), 32-bit int (I) images
+- Unusual channel layouts and bit depths bypass standard analysis tools
+- Channel math can hide data that only appears after colour space conversion
+- Detection: requires per-mode knowledge of pixel layout
+- **Mitigation: sanitizer converts all non-RGB modes to 8-bit RGB**
+
+### Compression-Based Hiding
+- Data embedded in JPEG quantisation tables or DCT coefficients
+- PNG compression level manipulation (zlib level affects output, not data)
+- GIF LZW minimum code size alteration
+- Detection: requires full decompression cycle analysis (not implemented)
+- Mitigation: PIL re-encode re-compresses with standard settings
+
+---
+
+## 2. Image Bombs / Zip Bombs
+
+### Decompression Bomb
+- Tiny image (e.g., 100x100) with extremely high compression ratio (>500:1)
+- Small file on disk expands to gigabytes in memory when decompressed
+- Detection: compare estimated uncompressed size to actual file size
+- Mitigation: reject if compression ratio exceeds threshold (500:1 configured)
+
+### Dimension Bomb
+- Image with extreme dimensions (e.g., 100000x100000) → 10 gigapixels
+- Causes OOM during PIL open or downstream processing
+- Detection: check width, height, megapixels before full decompression
+- Mitigation: reject if width/height > 10000px or megapixels > 50MP
+
+### Aspect Ratio Bomb
+- Extreme aspect ratio (e.g., 1x100000) — parser allocates scanlines proportional to width
+- Causes memory exhaustion even at moderate megapixel counts
+- Detection: check aspect ratio before decoding pixel data
+- Mitigation: reject if aspect ratio > 100:1
+
+### PDF Page Bomb
+- PDF with thousands of pages, each containing an image
+- Causes OOM during page-by-page processing
+- Detection: check page count before rendering
+- Mitigation: reject if page count > 500
+
+---
+
+## 3. Polyglot Files
+
+### Dual-Format Polyglot
+- File that is valid in two formats simultaneously (e.g., PNG + ZIP, GIF + JS)
+- Passes magic-byte validation as an image but executes as script
+- Detection: check for embedded magic signatures within file
+- Mitigation: not currently implemented; sanitizer re-encode destructs non-image content
+
+### Chunk Injection (PNG)
+- Additional PNG chunks inserted between required chunks (IHDR → ... → IDAT → IEND)
+- Unknown chunk types are silently ignored by most parsers
+- Data can be hidden in chunk names, lengths, or payload
+- Detection: inspect all chunk types in PNG structure (not implemented)
+- Mitigation: PIL re-encode produces only essential chunks (IHDR, IDAT, IEND)
+
+---
+
+## 4. Signature / Extension Mismatch
+
+### Magic Byte Mismatch
+- File extension says .png but magic bytes indicate GIF or EXE
+- Downstream parser may interpret file differently than validator expected
+- Detection: compare extension-derived MIME to magic-byte MIME
+- Mitigation: reject if magic bytes do not match extension
+
+### No Extension or Double Extension
+- `file` has no extension → parser defaults to unknown handler
+- `image.png.exe` double extension bypasses extension-only filters
+- Detection: check for multiple dots, require known extension
+- Mitigation: reject if no extension or double extension detected
+
+---
+
+## 5. Entropy-Based Threats
+
+### High-Entropy Flagging
+- Encrypted or compressed payloads embedded in image data have high entropy (>7.5 bits/byte)
+- Not necessarily malicious, but suspicious in image context
+- Detection: Shannon entropy calculation on raw bytes
+- Mitigation: flagged but never blocked (informational only)
+
+### Low-Entropy Stealth
+- Attacker deliberately uses low-entropy encoding (repeated patterns) to avoid entropy detection
+- Statistical stego detection (chi-square, bitplane correlation) catches this
+- Detection: chi-square analysis of paired-byte distributions
+
+---
+
+## 6. Pixel-Level Attacks
+
+### Pixel Value Prefixing
+- Specific pixel values (e.g., all-black, all-white) used as markers before hidden data
+- Only pixels after the marker are decoded
+- Current implementation scans all pixels for printable ASCII — marker-based encoding is invisible
+
+### Out-of-Bounds Channel Access
+- Image with declared but absent channel data (e.g., RGBA with zero alpha bytes)
+- Parser reads past buffer into adjacent memory
+- Mitigation: PIL handles channel validation internally during `open()`/`verify()`
+
+### Colour Channel Manipulation
+- Message distributed across multiple channels in a pattern (e.g., bit 0 of R, bit 1 of G, bit 2 of B)
+- Single-channel LSB extraction produces garbled output
+- Detection: combined RGB interleaved extraction (spatial engine checks RGB combined)
+
+---
+
+## Current Coverage Summary
+
+| Threat | Detected? | Blocked? | Engine |
+|--------|-----------|----------|--------|
+| LSB-1 (any channel) | Yes | No* | Spatial |
+| LSB-2 (bit-1 plane) | Yes | No* | Spatial |
+| Alpha channel LSB | Yes (RGBA) | No* | Spatial |
+| Combined RGB LSB | Yes | No* | Spatial |
+| Post-EOF payload | Yes | No* | Structural |
+| Metadata hidden text | Yes | No* | Metadata |
+| Large metadata fields | Yes | No* | Metadata |
+| Colour depth abuse | — | Yes (sanitizer) | Sanitizer |
+| Non-standard colour modes | — | Yes (sanitizer) | Sanitizer |
+| Palette-based hiding | — | Yes (sanitizer) | Sanitizer |
+| Image bomb (ratio) | Yes | Yes | Validator |
+| Dimension bomb | Yes | Yes | Validator |
+| Aspect ratio bomb | Yes | Yes | Validator |
+| PDF page bomb | Yes | Yes | Validator |
+| Magic byte mismatch | Yes | Yes | Validator |
+| Double extension | Yes | Yes | Validator |
+| High entropy | Yes | No† | Validator |
+| Polyglot (chunk injection) | — | Partial (sanitizer) | Sanitizer |
+| Polyglot (dual-format) | — | Partial (sanitizer) | Sanitizer |
+| Pixel value prefixing | No | No | — |
+| Cross-channel pattern hiding | Partial (RGB combined) | No | Spatial |
+
+\* All stego findings are flag-only — never block upload, only reported.
+† Entropy is informational — flagged if >7.5, never blocks.

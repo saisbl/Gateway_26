@@ -602,6 +602,7 @@
         }
         .inspect-timeline .it-seg { height: 100%; }
         .it-seg.auth { background: var(--accent); }
+        .it-seg.sanitize { background: #f59e0b; }
         .it-seg.scan { background: #8b5cf6; }
         .it-seg.gpu { background: var(--success); }
 
@@ -813,6 +814,53 @@
             .status-grid { grid-template-columns: 1fr; }
             .latency-grid { grid-template-columns: 1fr 1fr; }
         }
+
+        /* ── Detailed Report Modal ── */
+        #reportModal .modal { max-width: 920px; }
+        .report-container { font-size: 0.82rem; }
+        .report-container .rp-section { margin-bottom: 18px; }
+        .report-container .rp-section:last-child { margin-bottom: 0; }
+        .report-container .rp-title {
+            font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.06em; color: var(--text-muted);
+            margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+        }
+        .report-container .rp-title .line { flex:1; height:1px; background:var(--border); }
+        .report-container .rp-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+        }
+        .report-container .rp-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+        .report-container .rp-field {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 8px 12px;
+        }
+        .report-container .rp-field .rpf-label {
+            font-size: 0.62rem; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 1px;
+        }
+        .report-container .rp-field .rpf-value {
+            font-size: 0.85rem; font-weight: 600; color: var(--text-primary);
+            word-break: break-all;
+        }
+        .report-container .rp-field .rpf-value .unit { font-weight:400; color:var(--text-muted); font-size:0.72rem; }
+        .report-container .rp-field .rpf-value.good { color: var(--success); }
+        .report-container .rp-field .rpf-value.bad { color: var(--error); }
+        .report-container .rp-field.full { grid-column: 1 / -1; }
+        .report-container .rp-check-list { display: flex; flex-direction: column; gap: 4px; }
+        .report-container .rp-check-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 5px 10px; background: var(--bg-secondary);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+        }
+        .report-container .rp-check-row .rpc-icon { font-size: 0.85rem; flex-shrink:0; }
+        .report-container .rp-check-row .rpc-name { font-size: 0.78rem; font-weight:500; flex:1; }
+        .report-container .rp-check-row .rpc-detail { font-size:0.7rem; color:var(--text-muted); }
+        .report-container .rp-stego-msg {
+            padding: 4px 8px; margin: 2px 0; border-radius: 4px;
+            background: var(--card-muted-bg); font-family: monospace; font-size: 0.75rem;
+        }
+        .report-container .rp-stego-msg .rps-channel { color: var(--accent-light); font-weight:600; margin-right:6px; }
+        .report-container .rp-stego-msg .rps-text { color: var(--text-primary); word-break:break-all; }
     </style>
 </head>
 <body>
@@ -982,6 +1030,23 @@
                 </div>
             </div>
             <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <!-- Detailed Report Modal -->
+    <div class="modal-overlay" id="reportModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="mh-left">
+                    <div class="mh-file-icon" id="rpFileIcon">&#x1f5bc;</div>
+                    <div class="mh-name" id="rpFileName">filename.ext</div>
+                    <span class="status-tag" id="rpStatusTag">success</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <button class="mh-close" id="rpClose">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body" id="rpBody"></div>
         </div>
     </div>
 
@@ -1246,12 +1311,14 @@
                 // Section: Latency Timeline
                 const lat = r.latency || {};
                 const a = lat.authorization_ms || 0;
+                const sa = lat.sanitization_ms || 0;
                 const sc = lat.scanning_ms || 0;
                 const g = lat.inference_ms || 0;
-                const secTotal = lat.total_security_ms || (a + sc);
-                const grandTotal = lat.total_processing_ms || (a + sc + g);
+                const secTotal = lat.total_security_ms || (a + sa + sc);
+                const grandTotal = lat.total_processing_ms || (a + sa + sc + g);
                 const maxVal = Math.max(grandTotal, 1);
                 const aPct = (a / maxVal * 100).toFixed(1);
+                const saPct = (sa / maxVal * 100).toFixed(1);
                 const sPct = (sc / maxVal * 100).toFixed(1);
                 const gPct = (g / maxVal * 100).toFixed(1);
 
@@ -1259,11 +1326,13 @@
                 html += '<div class="is-title">Latency Breakdown<span class="line"></span></div>';
                 html += '<div class="inspect-timeline">';
                 html += '<div class="it-seg auth" style="width:' + aPct + '%" title="Authorization: ' + a.toFixed(1) + 'ms"></div>';
+                html += '<div class="it-seg sanitize" style="width:' + saPct + '%" title="Sanitization: ' + sa.toFixed(1) + 'ms"></div>';
                 html += '<div class="it-seg scan" style="width:' + sPct + '%" title="Scanning: ' + sc.toFixed(1) + 'ms"></div>';
                 html += '<div class="it-seg gpu" style="width:' + gPct + '%" title="Inference: ' + g.toFixed(1) + 'ms"></div>';
                 html += '</div>';
                 html += '<div class="inspect-grid">';
                 html += '<div class="inspect-field"><div class="if-label">Authorization</div><div class="if-value">' + a.toFixed(1) + ' <span class="unit">ms</span></div></div>';
+                html += '<div class="inspect-field"><div class="if-label">Sanitization</div><div class="if-value">' + sa.toFixed(1) + ' <span class="unit">ms</span></div></div>';
                 html += '<div class="inspect-field"><div class="if-label">Scanning</div><div class="if-value">' + sc.toFixed(1) + ' <span class="unit">ms</span></div></div>';
                 html += '<div class="inspect-field"><div class="if-label">Inference</div><div class="if-value">' + g.toFixed(1) + ' <span class="unit">ms</span></div></div>';
                 html += '<div class="inspect-field"><div class="if-label">GPU Model</div><div class="if-value">' + (r.inference?.model || 'mock-vision-v1') + '</div></div>';
@@ -1290,19 +1359,26 @@
                     html += '</div></div>';
                 }
 
-                // Section: Steganography Decode
+                // Section: Steganography Decode (two-column layout)
                 html += '<div class="inspect-section">';
                 html += '<div class="is-title">Steganography Analysis<span class="line"></span></div>';
+                html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
+                // Left half — decode controls
+                html += '<div style="display:flex;flex-direction:column;gap:8px;">';
                 if (r.steganography && r.steganography.flagged) {
-                    html += '<div class="is-value" style="color:var(--warning);font-weight:600;margin-bottom:8px;">&#x26a0; Suspicious indicators found during initial scan.</div>';
+                    html += '<div style="font-size:0.75rem;color:var(--warning);font-weight:600;">&#x26a0; Suspicious indicators found during initial scan.</div>';
                 }
-                html += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
                 if (modalBatchId != null && modalBatchId !== undefined) {
-                    html += '<button class="decode-btn" id="decodeBtn" onclick="decodeCurrentFile()">&#x1f50d; Decode Hidden Message</button>';
+                    html += '<button class="decode-btn" id="decodeBtn" onclick="decodeCurrentFile()" style="align-self:flex-start;">&#x1f50d; Decode Hidden Message</button>';
                 }
+                html += '<div id="decodeResults" style="font-size:0.8rem;line-height:1.5;"></div>';
                 html += '</div>';
-                html += '<div id="decodeResults" style="font-size:0.82rem;line-height:1.6;"></div>';
+                // Right half — detailed report button
+                html += '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid var(--border);padding-left:12px;">';
+                html += '<button class="decode-btn" onclick="showDetailedReport()" style="background:linear-gradient(135deg,var(--accent),#8b5cf6);padding:12px 20px;font-size:0.85rem;white-space:nowrap;">&#x1f4ca; Detailed Report</button>';
+                html += '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:6px;">Full analytics &amp; file behaviour</div>';
                 html += '</div>';
+                html += '</div></div>';
             } else if (r.status === 'rejected') {
                 html += '<div class="inspect-section">';
                 html += '<div class="is-title">Rejection Details<span class="line"></span></div>';
@@ -1325,6 +1401,24 @@
                 html += '<div class="inspect-step"><div class="is-dot ' + (scanPass ? 'pass' : 'fail') + '"></div><div class="is-name">File Scanning</div><div class="is-latency">' + (scanPass ? 'OK' : '&#x2717; failed') + '</div></div>';
                 html += '<div class="inspect-step"><div class="is-dot fail"></div><div class="is-name">GPU Inference</div><div class="is-latency">&#x2014; skipped</div></div>';
                 html += '</div></div>';
+
+                // Rejected files also get stego section + detailed report
+                html += '<div class="inspect-section">';
+                html += '<div class="is-title">Steganography Analysis<span class="line"></span></div>';
+                html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
+                html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+                if (r.steganography && r.steganography.flagged) {
+                    html += '<div style="font-size:0.75rem;color:var(--warning);font-weight:600;">&#x26a0; Suspicious indicators found during initial scan.</div>';
+                }
+                if (modalBatchId != null && modalBatchId !== undefined) {
+                    html += '<button class="decode-btn" id="decodeBtn" onclick="decodeCurrentFile()" style="align-self:flex-start;">&#x1f50d; Decode Hidden Message</button>';
+                }
+                html += '<div id="decodeResults" style="font-size:0.8rem;line-height:1.5;"></div>';
+                html += '</div>';
+                html += '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid var(--border);padding-left:12px;">';
+                html += '<button class="decode-btn" onclick="showDetailedReport()" style="background:linear-gradient(135deg,var(--accent),#8b5cf6);padding:12px 20px;font-size:0.85rem;white-space:nowrap;">&#x1f4ca; Detailed Report</button>';
+                html += '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:6px;">Full analytics &amp; file behaviour</div>';
+                html += '</div></div></div>';
             } else {
                 html += '<div class="inspect-section">';
                 html += '<div class="is-title">Error Details<span class="line"></span></div>';
@@ -1345,6 +1439,20 @@
             if (e.key === 'Escape') closeModal();
             if (e.key === 'ArrowLeft') { document.getElementById('modalPrev').click(); }
             if (e.key === 'ArrowRight') { document.getElementById('modalNext').click(); }
+        });
+
+        function closeReport() {
+            document.getElementById('reportModal').classList.remove('open');
+            document.body.style.overflow = '';
+        }
+        document.getElementById('rpClose').addEventListener('click', closeReport);
+        document.getElementById('reportModal').addEventListener('click', function(e) {
+            if (e.target === this) closeReport();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (document.getElementById('reportModal').classList.contains('open')) closeReport();
+            }
         });
         document.getElementById('modalPrev').addEventListener('click', function() {
             if (modalIdx > 0) { modalIdx--; renderModal(); updateActiveRow(modalIdx); }
@@ -1381,27 +1489,26 @@
                     }
                     let h = '';
                     if (data.flagged) {
-                        h += '<div class="is-value" style="color:var(--warning);font-weight:600;margin-bottom:8px;">&#x26a0; Suspicious: ' + data.reasons.join(', ') + '</div>';
                         if (data.extracted_messages && data.extracted_messages.length) {
-                            h += '<div style="margin-bottom:8px;"><strong>Extracted Messages:</strong></div>';
                             data.extracted_messages.forEach(m => {
-                                h += '<div class="decode-msg"><span class="dm-channel">[' + m.channel + ']</span> <span class="dm-text">"' + m.text + '"</span></div>';
+                                h += '<div class="decode-msg" style="margin-bottom:4px;padding:6px 10px;"><span style="font-size:0.7rem;color:var(--text-muted);">Extracted message</span> <span class="dm-channel" style="font-size:0.82rem;">[' + m.channel + ': ' + m.text + ']</span></div>';
                             });
                         }
                         if (data.structural_payloads && data.structural_payloads.length) {
-                            h += '<div style="margin-top:10px;margin-bottom:8px;"><strong>Structural Findings:</strong></div>';
                             data.structural_payloads.forEach(s => {
-                                h += '<div class="decode-msg structural"><span class="dm-channel">[' + (s.type || 'payload') + ']</span> <span class="dm-text">' + (s.text || s.description || '') + '</span></div>';
+                                h += '<div class="decode-msg structural" style="margin-bottom:2px;padding:4px 8px;"><span style="font-size:0.7rem;color:var(--text-muted);">Structural</span> <span class="dm-channel" style="font-size:0.78rem;">[' + (s.type || 'payload') + ': ' + (s.text || s.description || '') + ']</span></div>';
                             });
                         }
                         if (data.metadata_findings && data.metadata_findings.length) {
-                            h += '<div style="margin-top:10px;margin-bottom:8px;"><strong>Metadata Findings:</strong></div>';
                             data.metadata_findings.forEach(m => {
-                                h += '<div class="decode-msg metadata"><span class="dm-channel">[' + (m.field || m.type || 'meta') + ']</span> <span class="dm-text">' + (m.content || m.description || '') + '</span></div>';
+                                h += '<div class="decode-msg metadata" style="margin-bottom:2px;padding:4px 8px;"><span style="font-size:0.7rem;color:var(--text-muted);">Metadata</span> <span class="dm-channel" style="font-size:0.78rem;">[' + (m.field || m.type || 'meta') + ': ' + (m.content || m.description || '') + ']</span></div>';
                             });
                         }
+                        if (!h) {
+                            h = '<div class="an-msg" style="padding:6px 10px;font-size:0.78rem;">&#x26a0; ' + data.reasons.join(', ') + '</div>';
+                        }
                     } else {
-                        h = '<div class="is-value" style="color:var(--success);">No hidden content detected.</div>';
+                        h = '<div class="is-value" style="color:var(--success);font-size:0.82rem;padding:6px 0;">No hidden content detected.</div>';
                     }
                     area.innerHTML = h;
                 })
@@ -1410,6 +1517,212 @@
                     btn.disabled = false;
                     area.innerHTML = '<div class="inspect-msg error">Decode failed: ' + err.message + '</div>';
                 });
+        }
+
+        function showDetailedReport() {
+            const r = modalData[modalIdx];
+            if (!r) return;
+            const ext = r.filename.split('.').pop().toLowerCase();
+            const cls = r.status === 'success' ? 'success' : r.status === 'rejected' ? 'rejected' : 'error';
+
+            document.getElementById('rpFileIcon').className = 'mh-file-icon ' + ext;
+            document.getElementById('rpFileIcon').textContent = ext;
+            document.getElementById('rpFileName').textContent = r.filename;
+            const tag = document.getElementById('rpStatusTag');
+            tag.className = 'status-tag ' + cls;
+            tag.textContent = r.status;
+
+            const body = document.getElementById('rpBody');
+            let h = '<div class="report-container">';
+
+            // Helper: one field
+            function f(label, value, cls) {
+                const v = (value === null || value === undefined) ? '—' : value;
+                return '<div class="rp-field"><div class="rpf-label">' + label + '</div><div class="rpf-value' + (cls ? ' ' + cls : '') + '">' + v + '</div></div>';
+            }
+            function field(label, value, full) {
+                return '<div class="rp-field' + (full ? ' full' : '') + '"><div class="rpf-label">' + label + '</div><div class="rpf-value">' + (value ?? '—') + '</div></div>';
+            }
+
+            // ── 1. File Summary ──
+            h += '<div class="rp-section"><div class="rp-title">File Summary<span class="line"></span></div><div class="rp-grid">';
+            h += f('Filename', r.filename);
+            h += f('Extension', '.' + ext);
+            h += f('Status', r.status.toUpperCase(), r.status === 'success' ? 'good' : 'bad');
+            const fsize = r.scanning?.file_size_bytes;
+            if (fsize != null) h += f('File Size', (fsize / 1024).toFixed(1) + ' <span class="unit">KB</span>');
+            if (r.scanning?.mime_type) h += f('MIME Type', r.scanning.mime_type);
+            if (r.scanning?.mode) h += f('Color Mode', r.scanning.mode);
+            if (r.scanning?.dimensions?.width) {
+                const d = r.scanning.dimensions;
+                h += f('Dimensions', d.width + ' x ' + d.height + ' px');
+                h += f('Megapixels', d.megapixels.toFixed(3));
+            }
+            if (r.scanning?.compression_ratio != null) h += f('Compression Ratio', r.scanning.compression_ratio.toFixed(1) + ':1');
+            if (r.scanning?.entropy_score != null) h += f('Entropy Score', r.scanning.entropy_score.toFixed(4));
+            if (r.sanitization?.original_size != null) {
+                const orig = r.sanitization.original_size;
+                h += f('Original Size', (orig / 1024).toFixed(1) + ' <span class="unit">KB</span>');
+            }
+            h += '</div></div>';
+
+            // ── 2. Authorization ──
+            if (r.authorization) {
+                const a = r.authorization;
+                h += '<div class="rp-section"><div class="rp-title">Authorization<span class="line"></span></div><div class="rp-grid">';
+                h += f('Allowed', a.allowed ? 'Yes' : 'No', a.allowed ? 'good' : 'bad');
+                if (a.tenant) h += f('Tenant', a.tenant);
+                if (a.key_type) h += f('Key Type', a.key_type);
+                if (a.key_expires_at) h += f('Expires', a.key_expires_at);
+                if (a.requests_remaining != null) h += f('Requests Remaining (key)', a.requests_remaining);
+                if (a.requests_this_minute != null) h += f('Requests This Minute', a.requests_this_minute);
+                if (a.daily_requests != null) h += f('Daily Requests', a.daily_requests);
+                if (a.daily_limit != null) h += f('Daily Limit', a.daily_limit);
+                if (a.auth_time_ms != null) h += f('Auth Time', a.auth_time_ms.toFixed(2) + ' <span class="unit">ms</span>');
+                h += '</div></div>';
+            }
+
+            // ── 3. Scan Validation Checks ──
+            const chk = r.scanning?.checks;
+            if (chk) {
+                h += '<div class="rp-section"><div class="rp-title">Scan Validation<span class="line"></span></div><div class="rp-check-list">';
+                const checkEntries = [
+                    ['extension', 'Extension Check', chk.extension],
+                    ['magic_bytes', 'Magic Bytes', chk.magic_bytes],
+                    ['dimensions', 'Dimensions', chk.dimensions],
+                    ['image_bomb', 'Image Bomb', chk.image_bomb],
+                    ['color_depth', 'Color Depth', chk.color_depth],
+                    ['entropy', 'Entropy', chk.entropy],
+                ];
+                for (const [id, label, c] of checkEntries) {
+                    if (!c) continue;
+                    const ok = c.passed === true || c.passed === undefined;
+                    h += '<div class="rp-check-row">';
+                    h += '<span class="rpc-icon">' + (ok ? '&#x2705;' : '&#x274c;') + '</span>';
+                    h += '<span class="rpc-name">' + label + '</span>';
+                    if (c.reason) h += '<span class="rpc-detail">' + c.reason + '</span>';
+                    if (c.score != null) h += '<span class="rpc-detail">Score: ' + c.score.toFixed(4) + '</span>';
+                    if (c.flagged != null) h += '<span class="rpc-detail">' + (c.flagged ? 'Flagged' : 'OK') + '</span>';
+                    if (c.width != null) h += '<span class="rpc-detail">' + c.width + 'x' + c.height + '</span>';
+                    h += '</div>';
+                }
+                h += '</div></div>';
+            }
+
+            // ── 4. Steganography Scan (statistical) ──
+            const stegoScan = chk?.steganography;
+            if (stegoScan) {
+                h += '<div class="rp-section"><div class="rp-title">Steganography Scan (Statistical)<span class="line"></span></div><div class="rp-grid three">';
+                h += f('Flagged', stegoScan.flagged ? 'Yes' : 'No', stegoScan.flagged ? 'bad' : 'good');
+                h += f('Chi-Square', stegoScan.chi_square_score != null ? stegoScan.chi_square_score.toFixed(4) : '—');
+                h += f('LSB Zero Ratio', stegoScan.lsb_zero_ratio != null ? stegoScan.lsb_zero_ratio.toFixed(4) : '—');
+                h += f('Bitplane Correlation', stegoScan.bitplane_correlation != null ? stegoScan.bitplane_correlation.toFixed(4) : '—');
+                h += f('Samples Analyzed', stegoScan.samples_analyzed != null ? stegoScan.samples_analyzed.toLocaleString() : '—');
+                const reasons = stegoScan.reasons;
+                h += f('Reasons', reasons && reasons.length ? reasons.join(', ') : 'None');
+                h += '</div>';
+
+                var rpScanIdx = 0;
+                if (stegoScan.extracted_messages && stegoScan.extracted_messages.length) {
+                    var sid = 'rp_scollapse_' + (rpScanIdx++);
+                    h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + sid + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:6px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Scan LSB Texts <span style="font-weight:400;color:var(--text-muted);">(' + stegoScan.extracted_messages.length + ')</span></div>';
+                    h += '<div id="' + sid + '" style="display:none;">';
+                    stegoScan.extracted_messages.forEach(m => {
+                        h += '<div class="rp-stego-msg"><span class="rps-channel">[' + m.channel + ']</span><span class="rps-text">' + m.text + '</span></div>';
+                    });
+                    h += '</div>';
+                }
+                if (stegoScan.structural_payloads && stegoScan.structural_payloads.length) {
+                    var sid = 'rp_scollapse_' + (rpScanIdx++);
+                    h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + sid + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:4px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Scan Structural <span style="font-weight:400;color:var(--text-muted);">(' + stegoScan.structural_payloads.length + ')</span></div>';
+                    h += '<div id="' + sid + '" style="display:none;">';
+                    stegoScan.structural_payloads.forEach(s => {
+                        h += '<div class="rp-stego-msg" style="border-left:2px solid var(--warning);"><span class="rps-channel">[' + (s.type || 'payload') + ']</span><span class="rps-text">' + (s.text || s.description || '') + '</span></div>';
+                    });
+                    h += '</div>';
+                }
+                if (stegoScan.metadata_findings && stegoScan.metadata_findings.length) {
+                    var sid = 'rp_scollapse_' + (rpScanIdx++);
+                    h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + sid + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:4px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Scan Metadata <span style="font-weight:400;color:var(--text-muted);">(' + stegoScan.metadata_findings.length + ')</span></div>';
+                    h += '<div id="' + sid + '" style="display:none;">';
+                    stegoScan.metadata_findings.forEach(m => {
+                        h += '<div class="rp-stego-msg" style="border-left:2px solid var(--info);"><span class="rps-channel">[' + (m.field || m.type || 'meta') + ']</span><span class="rps-text">' + (m.content || m.description || '') + '</span></div>';
+                    });
+                    h += '</div>';
+                }
+                h += '</div>';
+            }
+
+            // ── 5. Steganography Detection (sanitize-time 3-engine) ──
+            const stegoDetect = r.steganography;
+            if (stegoDetect) {
+                h += '<div class="rp-section"><div class="rp-title">Steganography Detection (3-Engine)<span class="line"></span></div>';
+                h += '<div class="rp-grid" style="margin-bottom:6px;">';
+                h += f('Flagged', stegoDetect.flagged ? 'Yes' : 'No', stegoDetect.flagged ? 'bad' : 'good');
+                const reasons = stegoDetect.reasons;
+                h += f('Reasons', reasons && reasons.length ? reasons.join(', ') : 'None', null, true);
+                h += '</div>';
+
+                var rpIdx = 0;
+                if (stegoDetect.extracted_messages && stegoDetect.extracted_messages.length) {
+                    var id = 'rp_collapse_' + (rpIdx++);
+                    h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + id + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:4px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Extracted Messages <span style="font-weight:400;color:var(--text-muted);">(' + stegoDetect.extracted_messages.length + ')</span></div>';
+                    h += '<div id="' + id + '" style="display:none;">';
+                    stegoDetect.extracted_messages.forEach(m => {
+                        h += '<div class="rp-stego-msg"><span class="rps-channel">[' + m.channel + ']</span><span class="rps-text">' + m.text + '</span></div>';
+                    });
+                    h += '</div>';
+                }
+                if (stegoDetect.structural_payloads && stegoDetect.structural_payloads.length) {
+                    var id = 'rp_collapse_' + (rpIdx++);
+                    h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + id + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:6px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Structural Findings <span style="font-weight:400;color:var(--text-muted);">(' + stegoDetect.structural_payloads.length + ')</span></div>';
+                    h += '<div id="' + id + '" style="display:none;">';
+                    stegoDetect.structural_payloads.forEach(s => {
+                        h += '<div class="rp-stego-msg" style="border-left:2px solid var(--warning);"><span class="rps-channel">[' + (s.type || 'payload') + ']</span><span class="rps-text">' + (s.text || s.description || '') + '</span></div>';
+                    });
+                    h += '</div>';
+                }
+                if (stegoDetect.metadata_findings && stegoDetect.metadata_findings.length) {
+                    var id = 'rp_collapse_' + (rpIdx++);
+                    h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + id + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:6px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Metadata Findings <span style="font-weight:400;color:var(--text-muted);">(' + stegoDetect.metadata_findings.length + ')</span></div>';
+                    h += '<div id="' + id + '" style="display:none;">';
+                    stegoDetect.metadata_findings.forEach(m => {
+                        h += '<div class="rp-stego-msg" style="border-left:2px solid var(--info);"><span class="rps-channel">[' + (m.field || m.type || 'meta') + ']</span><span class="rps-text">' + (m.content || m.description || '') + '</span></div>';
+                    });
+                    h += '</div>';
+                }
+                h += '</div>';
+            }
+
+            // ── 6. Inference ──
+            if (r.inference) {
+                const inf = r.inference;
+                h += '<div class="rp-section"><div class="rp-title">Inference Result<span class="line"></span></div><div class="rp-grid">';
+                h += f('Model', inf.model || '—');
+                h += f('Status', inf.status || '—');
+                h += f('Latency', inf.latency_ms != null ? inf.latency_ms + ' <span class="unit">ms</span>' : '—');
+                if (inf.labels && inf.labels.length) h += field('Labels', inf.labels.join(', '));
+                if (inf.file_size != null) h += f('File Size', inf.file_size + ' <span class="unit">bytes</span>');
+                h += '</div></div>';
+            }
+
+            // ── 7. Latency Breakdown ──
+            const lat = r.latency || {};
+            if (lat.authorization_ms != null || lat.scanning_ms != null || lat.inference_ms != null) {
+                h += '<div class="rp-section"><div class="rp-title">Latency Breakdown<span class="line"></span></div><div class="rp-grid">';
+                h += f('Authorization', (lat.authorization_ms || 0).toFixed(1) + ' <span class="unit">ms</span>');
+                h += f('Sanitization', (lat.sanitization_ms || 0).toFixed(1) + ' <span class="unit">ms</span>');
+                h += f('Scanning', (lat.scanning_ms || 0).toFixed(1) + ' <span class="unit">ms</span>');
+                h += f('Inference', (lat.inference_ms || 0).toFixed(1) + ' <span class="unit">ms</span>');
+                if (lat.total_security_ms != null) h += f('Security Layer Total', lat.total_security_ms.toFixed(1) + ' <span class="unit">ms</span>', true);
+                if (lat.total_processing_ms != null) h += f('Total Processing', lat.total_processing_ms.toFixed(1) + ' <span class="unit">ms</span>', true);
+                h += '</div></div>';
+            }
+
+            h += '</div>';
+            body.innerHTML = h;
+            document.getElementById('reportModal').classList.add('open');
+            document.body.style.overflow = 'hidden';
         }
 
         function displayLatency(data) {

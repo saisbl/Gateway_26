@@ -246,6 +246,7 @@ def detect_stego_on_bytes(data, filename):
 
     extracted = []
     metadata_findings = []
+    stats_defaults = {'chi_square_score': 0, 'lsb_zero_ratio': 0, 'bitplane_correlation': 0, 'samples_analyzed': 0}
     try:
         img = Image.open(io.BytesIO(data))
         img.verify()
@@ -256,6 +257,12 @@ def detect_stego_on_bytes(data, filename):
         for r in stego.get('reasons', []):
             if r not in reasons:
                 reasons.append(r)
+        stats_defaults = {
+            'chi_square_score': stego.get('chi_square_score', 0),
+            'lsb_zero_ratio': stego.get('lsb_zero_ratio', 0),
+            'bitplane_correlation': stego.get('bitplane_correlation', 0),
+            'samples_analyzed': stego.get('samples_analyzed', 0),
+        }
     except Exception:
         pass
 
@@ -266,6 +273,10 @@ def detect_stego_on_bytes(data, filename):
         'extracted_messages': extracted,
         'structural_payloads': structural,
         'metadata_findings': metadata_findings,
+        'chi_square_score': stats_defaults['chi_square_score'],
+        'lsb_zero_ratio': stats_defaults['lsb_zero_ratio'],
+        'bitplane_correlation': stats_defaults['bitplane_correlation'],
+        'samples_analyzed': stats_defaults['samples_analyzed'],
     }
 
 
@@ -310,9 +321,10 @@ def _close_stego_pool():
 
 
 def quick_stego_check(data):
-    """Fast (~5ms) statistical check on raw image bytes.
-    Returns (flagged, reasons). Only triggers full detection if suspicious.
-    This avoids the heavy LSB extraction for ~99% of clean files."""
+    """Fast (~5-15ms) heuristic check on raw image bytes.
+    Returns (flagged, reasons). Only triggers full 3-engine detection if suspicious.
+    Checks statistical properties AND a cheap LSB text sample
+    (first 1000 pixels, single channel)."""
     try:
         img = Image.open(io.BytesIO(data))
         img.verify()
@@ -339,6 +351,17 @@ def quick_stego_check(data):
         reasons.append('bitplane_decorrelated')
     if lsb_skew > STEG_LSB_SKEW_THRESHOLD and bp_corr < 0.55:
         reasons.append('lsb_skewed')
+
+    # Cheap LSB text sample: first 1000 pixels, blue channel only
+    if img.mode in ('RGB', 'RGBA'):
+        pix_list = list(img.getdata())[:1000]
+        ch_idx = 2  # blue channel
+        bits = [p[ch_idx] & 1 for p in pix_list]
+        message = _bits_to_bytes(bits)
+        texts = _extract_text_from_bytes(message)
+        if texts:
+            reasons.append('lsb_text_found')
+
     return (len(reasons) > 0, reasons)
 
 

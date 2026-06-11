@@ -11,7 +11,7 @@ from engines.config import (ALLOWED_EXTENSIONS, MAX_FILE_SIZE_BYTES,
 from engines.helpers import detect_mime, get_extension
 from engines.scanner import scan_single_file, scan_file_wrapper, stats as scanner_stats
 from engines.sanitizer import sanitize_bytes
-from engines.steganography import detect_stego_on_bytes_async, add_stego_headers
+from engines.steganography import detect_stego_on_bytes, detect_stego_on_bytes_async, add_stego_headers
 
 app = Flask(__name__)
 
@@ -173,6 +173,20 @@ def sanitize_and_scan():
 
     proxy = _BytesFileProxy(cleaned, f.filename)
     scan_result = scan_single_file(proxy)
+    # Inject stego detection (from original bytes) into scan result checks
+    if 'checks' in scan_result and 'steganography' in scan_result['checks']:
+        scan_result['checks']['steganography'] = {
+            'passed': True,
+            'flagged': stego.get('flagged', False),
+            'chi_square_score': stego.get('chi_square_score', 0),
+            'lsb_zero_ratio': stego.get('lsb_zero_ratio', 0),
+            'bitplane_correlation': stego.get('bitplane_correlation', 0),
+            'samples_analyzed': stego.get('samples_analyzed', 0),
+            'reasons': stego.get('reasons', []),
+            'extracted_messages': stego.get('extracted_messages', []),
+            'structural_payloads': stego.get('structural_payloads', []),
+            'metadata_findings': stego.get('metadata_findings', []),
+        }
     scanner_stats['total_scanned'] += 1
     if scan_result.get('allowed'):
         scanner_stats['total_passed'] += 1
@@ -239,7 +253,7 @@ def decode_stego():
     data = file.read()
     if len(data) > MAX_FILE_SIZE_BYTES:
         return jsonify({'error': 'File too large'}), 413
-    stego = detect_stego_on_bytes_async(data, file.filename)
+    stego = detect_stego_on_bytes(data, file.filename)
     result = {
         'filename': file.filename, 'file_size': len(data),
         'mime_type': detect_mime(data),

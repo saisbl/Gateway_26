@@ -10,11 +10,16 @@ from .config import MAX_PDF_PAGES
 def strip_image_metadata(img):
     buf = io.BytesIO()
     fmt = img.format or 'PNG'
-    raw = img
-    if img.mode in ('P', '1', 'I', 'F'):
+
+    # OWASP: normalise to 8-bit RGB/RGBA
+    has_alpha = img.mode == 'RGBA' or (img.mode == 'P' and 'transparency' in img.info)
+    if fmt.upper() in ('JPEG', 'MPO'):
         raw = img.convert('RGB')
-    elif img.mode in ('CMYK', 'YCbCr', 'LAB'):
+    elif has_alpha:
+        raw = img.convert('RGBA')
+    else:
         raw = img.convert('RGB')
+
     save_kwargs = {}
     if fmt.upper() in ('JPEG', 'MPO'):
         save_kwargs['exif'] = b''
