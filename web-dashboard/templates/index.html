@@ -254,6 +254,10 @@
             cursor: pointer;
             transition: opacity var(--transition);
         }
+        .card-title .flagged-btn.active {
+            background: var(--accent);
+            color: #fff;
+        }
         .card-title .flagged-btn:hover { opacity: 0.85; }
         .full-width { grid-column: 1 / -1; }
         .two-col { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -1193,7 +1197,7 @@
             <div class="results-layout" id="results">
                 <div class="summary-table-wrap">
                     <table class="summary-table">
-                        <thead>
+                        <thead id="summaryHeader">
                             <tr>
                                 <th>File</th>
                                 <th>Status</th>
@@ -2059,14 +2063,82 @@
         }
 
         function showFlaggedOnly() {
-            const rows = document.querySelectorAll('#summaryBody .summary-row');
-            rows.forEach(function(row) {
-                const idx = parseInt(row.dataset.index);
-                const r = window._lastResults ? window._lastResults[idx] : null;
-                if (!r) { row.style.display = ''; return; }
+            const btn = document.getElementById('flaggedBtn');
+            const header = document.getElementById('summaryHeader');
+            const body = document.getElementById('summaryBody');
+            const results = window._lastResults;
+            if (!results) return;
+
+            // Toggle off: restore original view
+            if (btn.classList.contains('active')) {
+                btn.classList.remove('active');
+                btn.textContent = btn.dataset.origCount + ' Flagged';
+                if (window._savedHeaderHTML && window._savedTableHTML) {
+                    header.innerHTML = window._savedHeaderHTML;
+                    body.innerHTML = window._savedTableHTML;
+                    body.querySelectorAll('.summary-row').forEach(function(row) {
+                        row.addEventListener('click', function() {
+                            body.querySelectorAll('.summary-row').forEach(function(r) { r.classList.remove('active'); });
+                            this.classList.add('active');
+                            var idx = parseInt(this.dataset.index);
+                            showDetail(idx, results, window._decodeBatchId);
+                        });
+                    });
+                }
+                return;
+            }
+
+            // Save original state before switching
+            window._savedHeaderHTML = header.innerHTML;
+            window._savedTableHTML = body.innerHTML;
+
+            // Toggle on: show flagged view with Flagged/Reason/Elaborate columns
+            btn.classList.add('active');
+            btn.dataset.origCount = results.filter(function(rr) {
+                return rr.status === 'rejected' || rr.status === 'error' ||
+                    (rr.status === 'success' && rr.steganography && rr.steganography.flagged);
+            }).length;
+            btn.textContent = 'All Files';
+
+            header.innerHTML = '<tr><th>File</th><th>Status</th><th>Flagged</th><th>Reason</th><th>Elaborate</th></tr>';
+
+            modalData = results;
+            let rows = '';
+            results.forEach(function(r, i) {
                 const isFlagged = r.status === 'rejected' || r.status === 'error' ||
                     (r.status === 'success' && r.steganography && r.steganography.flagged);
-                row.style.display = isFlagged ? '' : 'none';
+                if (!isFlagged) return;
+                const ext = r.filename.split('.').pop().toLowerCase();
+                const cls = r.status === 'success' ? 'success' : r.status === 'rejected' ? 'rejected' : 'error';
+                rows += '<tr class="summary-row" data-index="' + i + '" style="cursor:pointer;">';
+                rows += '<td class="file-name"><span class="file-ext">' + ext + '</span>' + r.filename + '</td>';
+                rows += '<td><span class="status-tag ' + cls + '">' + r.status + '</span></td>';
+                let flaggedText = 'No', flaggedColor = 'var(--success)';
+                if (r.status === 'rejected' || r.status === 'error') { flaggedText = 'Yes'; flaggedColor = 'var(--error)'; }
+                else if (r.steganography && r.steganography.flagged) { flaggedText = 'Yes'; flaggedColor = 'var(--warning)'; }
+                rows += '<td style="color:' + flaggedColor + ';font-weight:600;">' + flaggedText + '</td>';
+                let reason = '—';
+                if (r.status === 'rejected') reason = r.reason || 'rejected';
+                else if (r.status === 'error') reason = r.error || 'error';
+                else if (r.steganography && r.steganography.reasons) reason = r.steganography.reasons.join('; ');
+                rows += '<td class="reason-cell" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + reason.replace(/"/g,'&quot;') + '">' + reason + '</td>';
+                const hasStego = r.steganography && r.steganography.reasons && r.steganography.reasons.length > 0;
+                if (hasStego) {
+                    rows += '<td><button class="decode-btn" style="font-size:0.65rem;padding:2px 10px;" onclick="event.stopPropagation();openElaborate(' + i + ')">ELABORATE</button></td>';
+                } else {
+                    rows += '<td style="color:var(--text-muted);">—</td>';
+                }
+                rows += '</tr>';
+            });
+            body.innerHTML = rows;
+
+            body.querySelectorAll('.summary-row').forEach(function(row) {
+                row.addEventListener('click', function() {
+                    body.querySelectorAll('.summary-row').forEach(function(r) { r.classList.remove('active'); });
+                    this.classList.add('active');
+                    var idx = parseInt(this.dataset.index);
+                    showDetail(idx, results, window._decodeBatchId);
+                });
             });
         }
 
