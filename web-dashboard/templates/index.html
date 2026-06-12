@@ -945,6 +945,64 @@
         .report-container { font-size: 0.8rem; font-family: var(--font-mono); }
         .report-container .rp-section { margin-bottom: 14px; }
         .report-container .rp-section:last-child { margin-bottom: 0; }
+
+        .elaborate-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+            padding: 32px;
+        }
+        .elaborate-overlay.open { display: flex; }
+        .elaborate-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            max-width: 720px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: 24px;
+            position: relative;
+        }
+        .elaborate-box .eb-close {
+            position: absolute; top: 12px; right: 16px;
+            background: none; border: none;
+            color: var(--text-muted); font-size: 1.4rem;
+            cursor: pointer; line-height: 1;
+        }
+        .elaborate-box .eb-close:hover { color: var(--text-primary); }
+        .elaborate-box .eb-title {
+            font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.08em; color: var(--accent); margin-bottom: 16px;
+            font-family: var(--font-mono);
+        }
+        .elaborate-box .eb-section { margin-bottom: 14px; }
+        .elaborate-box .eb-section:last-child { margin-bottom: 0; }
+        .elaborate-box .eb-section .ebs-head {
+            font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 4px;
+            font-family: var(--font-mono);
+        }
+        .elaborate-box .eb-section .ebs-body {
+            font-size: 0.78rem; color: var(--text-secondary); line-height: 1.6;
+            font-family: var(--font-mono);
+        }
+        .elaborate-box .eb-section .ebs-body strong { color: var(--text-primary); }
+        .elaborate-box .eb-section .ebs-body .highlight { color: var(--accent); font-weight: 600; }
+        .elaborate-box .eb-section .ebs-body .warn { color: var(--warning); font-weight: 600; }
+        .elaborate-box .eb-section .ebs-body .err { color: var(--error); font-weight: 600; }
+        .elaborate-box .eb-section .ebs-body .ok { color: var(--success); font-weight: 600; }
+        .elab-btn {
+            background: transparent; border: 1px solid var(--accent);
+            color: var(--accent); padding: 2px 10px;
+            font-size: 0.65rem; cursor: pointer; transition: var(--transition);
+            font-family: var(--font-mono); text-transform: uppercase;
+            letter-spacing: 0.04em; margin-left: 6px;
+        }
+        .elab-btn:hover { background: var(--accent); color: #000; }
+
         .report-container .rp-title {
             font-size: 0.6rem; font-weight: 600; text-transform: uppercase;
             letter-spacing: 0.08em; color: var(--text-muted);
@@ -1181,6 +1239,15 @@
                 </div>
             </div>
             <div class="modal-body" id="rpBody"></div>
+        </div>
+    </div>
+
+    <!-- Elaborate Overlay -->
+    <div class="elaborate-overlay" id="elaborateOverlay">
+        <div class="elaborate-box">
+            <button class="eb-close" onclick="closeElaborate()">&times;</button>
+            <div class="eb-title" id="elabTitle">Steganography Detection Elaboration</div>
+            <div id="elabBody"></div>
         </div>
     </div>
 
@@ -1547,9 +1614,8 @@
                 html += '<div id="decodeResults" style="font-size:0.8rem;line-height:1.5;"></div>';
                 html += '</div>';
                 // Right half — detailed report button
-                html += '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid var(--border);padding-left:12px;">';
-                html += '<button class="decode-btn" onclick="showDetailedReport()" style="background:linear-gradient(135deg,var(--accent),#8b5cf6);padding:12px 20px;font-size:0.85rem;white-space:nowrap;">&#x1f4ca; Detailed Report</button>';
-                html += '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:6px;">Full analytics &amp; file behaviour</div>';
+                html += '<div style="display:flex;flex-direction:column;border-left:1px solid var(--border);padding-left:12px;">';
+                html += '<button class="decode-btn" onclick="showDetailedReport()" style="align-self:stretch;text-align:center;justify-content:center;flex:1;">&#x25B6; DETAILED REPORT</button>';
                 html += '</div>';
                 html += '</div></div>';
             } else if (r.status === 'rejected') {
@@ -1588,9 +1654,8 @@
                 }
                 html += '<div id="decodeResults" style="font-size:0.8rem;line-height:1.5;"></div>';
                 html += '</div>';
-                html += '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid var(--border);padding-left:12px;">';
-                html += '<button class="decode-btn" onclick="showDetailedReport()" style="background:linear-gradient(135deg,var(--accent),#8b5cf6);padding:12px 20px;font-size:0.85rem;white-space:nowrap;">&#x1f4ca; Detailed Report</button>';
-                html += '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:6px;">Full analytics &amp; file behaviour</div>';
+                html += '<div style="display:flex;flex-direction:column;border-left:1px solid var(--border);padding-left:12px;">';
+                html += '<button class="decode-btn" onclick="showDetailedReport()" style="align-self:stretch;text-align:center;justify-content:center;flex:1;">&#x25B6; DETAILED REPORT</button>';
                 html += '</div></div></div>';
             } else {
                 html += '<div class="inspect-section">';
@@ -1809,7 +1874,7 @@
                 h += '<div class="rp-grid" style="margin-bottom:6px;">';
                 h += f('Flagged', stegoDetect.flagged ? 'Yes' : 'No', stegoDetect.flagged ? 'bad' : 'good');
                 const reasons = stegoDetect.reasons;
-                h += f('Reasons', reasons && reasons.length ? reasons.join(', ') : 'None', null, true);
+                h += '<div class="rp-field full"><div class="rpf-label">Reasons</div><div class="rpf-value" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"><span>' + (reasons && reasons.length ? reasons.join(', ') : 'None') + '</span><button class="elab-btn" onclick="openElaborate(modalIdx)">ELABORATE</button></div></div>';
                 h += '</div>';
                 h += '<div class="rp-section" style="margin-top:2px;border:1px solid var(--border);border-radius:var(--radius-sm);">';
                 h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'rp_stats_body\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);padding:6px 10px;user-select:none;display:flex;align-items:center;gap:6px;"><span class="rpt-icon">&#x25b6;</span> Statistical Details</div>';
@@ -1954,6 +2019,409 @@
             document.getElementById('latInfer').textContent = inf.toFixed(1);
             document.getElementById('latTotal').textContent = tot.toFixed(1);
         }
+
+        function closeElaborate() {
+            document.getElementById('elaborateOverlay').classList.remove('open');
+        }
+
+        function openElaborate(idx) {
+            const r = modalData[idx];
+            if (!r || !r.steganography) return;
+            const s = r.steganography;
+            const reasons = s.reasons || [];
+            const msgs = s.extracted_messages || [];
+            const structural = s.structural_payloads || [];
+            const meta = s.metadata_findings || [];
+            const dcss = s.chi_square_scores || {};
+            const dlrs = s.lsb_zero_ratios || {};
+            const dbpc = s.bitplane_correlations || {};
+            const drs = s.rs_ratios || {};
+            const pvdSm = s.pvd_smoothness;
+            const pvdZr = s.pvd_zero_ratio;
+            const samples = s.samples_analyzed || 0;
+            let seenEngines = {};
+
+            function bar(val, mid, width) {
+                const pct = Math.min((val / (width || 1)) * 100, 100);
+                const color = val > mid * 1.2 ? 'var(--error)' : val > mid * 0.8 ? 'var(--warning)' : 'var(--success)';
+                return '<div style="display:flex;align-items:center;gap:6px;"><div style="flex:1;height:4px;background:var(--border);position:relative;"><div style="width:' + pct + '%;height:100%;background:' + color + ';"></div><div style="position:absolute;left:' + (mid/width*100) + '%;top:-2px;width:1px;height:8px;background:var(--text-muted);"></div></div><span style="font-size:0.65rem;color:var(--text-muted);min-width:24px;text-align:right;">' + val.toFixed(3) + '</span></div>';
+            }
+            function barLabel(label, val, threshold, reverse) {
+                if (val == null) return '';
+                const isBad = reverse ? val < threshold : val > threshold;
+                const color = isBad ? 'var(--error)' : 'var(--success)';
+                return '<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border);font-size:0.7rem;"><span>' + label + '</span><span style="font-weight:600;color:' + color + ';">' + val.toFixed(4) + ' <span style="font-weight:400;color:var(--text-muted);font-size:0.6rem;">(threshold: ' + threshold + ')</span></span></div>';
+            }
+
+            let h = '';
+
+            const engineMap = {
+                'pairs_too_similar': { eng: 'Chi-Square (Pairs Test)', sev: 'statistical', thresh: 'p > 0.001', desc: 'Compares observed pixel pair frequencies against expected uniform distribution using chi-square goodness-of-fit. Very low p-values (< 0.001) indicate the LSB plane distribution is too uniform — a hallmark of LSB steganography that replaces natural noise with structured data.' },
+                'bitplane_decorrelated': { eng: 'Bit-Plane 0/1 Correlation', sev: 'statistical', thresh: 'r < 0.52', desc: 'Measures Pearson correlation between bit plane 0 (LSB) and bit plane 1 across each color channel. Natural images have high correlation (~0.7-1.0) between adjacent bit planes. LSB embedding destroys this correlation by randomizing the LSB plane.' },
+                'lsb_skewed': { eng: 'LSB Zero Ratio', sev: 'statistical', thresh: '|ratio - 0.5| > 0.08', desc: 'Counts the proportion of zero-valued LSB bits across all sampled pixels. In natural images, roughly 50% of LSBs are 0 and 50% are 1. LSB steganography that embeds non-uniform payloads can skew this ratio significantly.' },
+                'pvd_anomaly': { eng: 'Pixel Value Differencing', sev: 'statistical', thresh: 'smoothness > 0.15', desc: 'Builds a histogram of absolute differences between adjacent pixel values. Stego embedding smooths out sharp transitions in the difference histogram because LSB flips change small differences more often than large ones, flattening the distribution.' },
+                'rs_anomaly': { eng: 'Regular-Singular (RS)', sev: 'statistical', thresh: '|R - 0.5| > 0.15', desc: 'The most reliable LSB detector. Partitions pixels into Regular, Singular, and Unusable groups based on how their values change under LSB flipping. In clean images, Regular ≈ Singular ≈ 50%. LSB embedding creates an asymmetry (R >> S or R << S).' },
+                'structural_payload': { eng: 'Post-EOF Payload Scan', sev: 'structural', thresh: 'size > 0 bytes', desc: 'Scans the raw byte stream after the file\'s natural end-of-file signature (IEND for PNG, FFD9 for JPEG, 0x3B for GIF). Any data beyond these markers is not part of the original image and is a strong steganographic indicator. Reports payload size, entropy, and any readable text.' },
+                'post_eof_text': { eng: 'Post-EOF Text Extraction', sev: 'structural', thresh: 'text length >= 4 chars', desc: 'Readable ASCII or UTF-8 text sequences found within the appended post-EOF payload. The presence of human-readable strings in trailing data significantly increases confidence of intentional steganographic embedding.' },
+                'message_extracted': { eng: 'Spatial LSB Message Extraction', sev: 'extraction', thresh: 'quality >= 8', desc: 'Systematically extracts bit streams from LSB and bit-1 planes of each color channel (R, G, B, RGB combined, Alpha). Bit streams are converted to bytes and decoded as ASCII, UTF-8, hex-encoded strings, and Base64. Each candidate is scored by length, character diversity, entropy, and keyword presence. Scores >= 15 are high confidence, >= 8 medium, < 8 low. Scores < 5 are discarded as noise.' },
+                'metadata_hidden_text': { eng: 'Metadata Text Field Scan', sev: 'metadata', thresh: 'content present', desc: 'Examines PNG text chunks (tEXt, zTXt, iTXt) and common metadata fields (Description, Comment, Copyright, Artist, ImageDescription). Reports the field name and content. While metadata text is often legitimate, suspicious or encoded content warrants investigation.' },
+                'oversized_metadata': { eng: 'Metadata Size Anomaly', sev: 'metadata', thresh: '> 500 bytes (metadata) / > 2000 bytes (EXIF)', desc: 'Flags metadata fields that are unusually large. Text metadata in PNG files rarely exceeds a few hundred bytes. Fields exceeding 500 bytes (or EXIF blocks over 2000 bytes) may contain embedded payloads disguised as metadata.' },
+                'lsb_text_found': { eng: 'Quick Check LSB Text', sev: 'extraction', thresh: 'any text found', desc: 'Fast heuristic scan during the quick-check gate: samples 500 pixels, extracts bits from planes 0 and 1 across all 3 channels, and looks for printable ASCII sequences. This is a low-cost pre-filter: any text found here promotes the file to full 3-engine analysis.' }
+            };
+
+            // ── 1. Executive Summary ──
+            let flagText = s.flagged ? '<span class="err">FLAGGED</span>' : '<span class="ok">CLEAN</span>';
+            let sevCount = { statistical: 0, structural: 0, extraction: 0, metadata: 0 };
+            reasons.forEach(function(rr) {
+                let k = rr.replace(/_[RGB]$/, '');
+                if (k.startsWith('pairs_too_similar')) k = 'pairs_too_similar';
+                if (k.startsWith('bitplane_decorrelated')) k = 'bitplane_decorrelated';
+                if (k.startsWith('lsb_skewed')) k = 'lsb_skewed';
+                if (k.startsWith('message_extracted')) k = 'message_extracted';
+                if (engineMap[k]) sevCount[engineMap[k].sev]++;
+            });
+            h += '<div class="eb-section"><div class="ebs-head">Executive Summary</div><div class="ebs-body">';
+            h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">';
+            h += '<span style="padding:2px 10px;border:1px solid var(--border);font-size:0.7rem;">Status: ' + flagText + '</span>';
+            h += '<span style="padding:2px 10px;border:1px solid var(--border);font-size:0.7rem;">Indicators: <strong>' + reasons.length + '</strong></span>';
+            h += '<span style="padding:2px 10px;border:1px solid var(--border);font-size:0.7rem;">Statistical: <strong>' + sevCount.statistical + '</strong></span>';
+            h += '<span style="padding:2px 10px;border:1px solid var(--border);font-size:0.7rem;">Structural: <strong>' + sevCount.structural + '</strong></span>';
+            h += '<span style="padding:2px 10px;border:1px solid var(--border);font-size:0.7rem;">Extraction: <strong>' + sevCount.extraction + '</strong></span>';
+            h += '<span style="padding:2px 10px;border:1px solid var(--border);font-size:0.7rem;">Metadata: <strong>' + sevCount.metadata + '</strong></span>';
+            h += '<span style="padding:2px 10px;border:1px solid var(--border);font-size:0.7rem;">Messages: <strong>' + msgs.length + '</strong></span>';
+            if (samples) h += '<span style="padding:2px 10px;border:1px solid var(--border);font-size:0.7rem;">Samples: <strong>' + samples.toLocaleString() + '</strong></span>';
+            h += '</div>';
+
+            // Risk level
+            let risk = 'LOW';
+            let riskColor = 'var(--success)';
+            if (s.flagged && reasons.length >= 5) { risk = 'CRITICAL'; riskColor = 'var(--error)'; }
+            else if (s.flagged && reasons.length >= 3) { risk = 'HIGH'; riskColor = 'var(--error)'; }
+            else if (s.flagged) { risk = 'MEDIUM'; riskColor = 'var(--warning)'; }
+            h += '<div style="padding:6px 10px;background:var(--bg-panel);border:1px solid var(--border);font-size:0.72rem;">Risk Level: <strong style="color:' + riskColor + ';">' + risk + '</strong> &mdash; ';
+            if (risk === 'CRITICAL') h += 'Multiple independent detection methods confirm active steganographic embedding. Immediate investigation required.';
+            else if (risk === 'HIGH') h += 'Strong statistical and/or structural evidence of hidden data. Thorough forensic analysis recommended.';
+            else if (risk === 'MEDIUM') h += 'Some indicators present but may be false positives. Cross-reference with extracted content.';
+            else h += 'No significant steganographic indicators detected.';
+            h += '</div></div></div>';
+
+            // ── 2. Triggered Engine Details ──
+            if (reasons.length) {
+                h += '<div class="eb-section"><div class="ebs-head">Triggered Engine Analysis</div><div class="ebs-body">';
+                reasons.forEach(function(rev) {
+                    let key = rev;
+                    if (rev.endsWith('_R') || rev.endsWith('_G') || rev.endsWith('_B')) {
+                        const parts = rev.split('_');
+                        parts.pop();
+                        key = parts.join('_');
+                    }
+                    if (key.startsWith('pairs_too_similar')) key = 'pairs_too_similar';
+                    if (key.startsWith('bitplane_decorrelated')) key = 'bitplane_decorrelated';
+                    if (key.startsWith('lsb_skewed')) key = 'lsb_skewed';
+                    if (key.startsWith('message_extracted')) key = 'message_extracted';
+                    if (engineMap[key] && !seenEngines[key]) {
+                        seenEngines[key] = true;
+                        const em = engineMap[key];
+                        const sevColor = em.sev === 'statistical' ? 'var(--accent)' : em.sev === 'structural' ? 'var(--warning)' : em.sev === 'extraction' ? 'var(--success)' : 'var(--info)';
+                        h += '<div style="margin:3px 0;padding:5px 8px;background:var(--bg-panel);border:1px solid var(--border);">';
+                        h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">';
+                        h += '<span style="font-size:0.62rem;color:' + sevColor + ';font-weight:600;text-transform:uppercase;">[' + em.sev + ']</span>';
+                        h += '<span style="font-size:0.7rem;color:var(--text-primary);font-weight:600;">' + em.eng + '</span>';
+                        h += '<span style="font-size:0.6rem;color:var(--text-muted);">threshold: ' + em.thresh + '</span>';
+                        h += '</div>';
+                        h += '<div style="font-size:0.7rem;color:var(--text-secondary);line-height:1.5;">' + em.desc + '</div></div>';
+                    }
+                });
+                // Per-channel matrix
+                let chR = [], chG = [], chB = [];
+                reasons.forEach(function(rev) {
+                    if (rev.endsWith('_R')) chR.push(rev.replace(/_R$/, ''));
+                    if (rev.endsWith('_G')) chG.push(rev.replace(/_G$/, ''));
+                    if (rev.endsWith('_B')) chB.push(rev.replace(/_B$/, ''));
+                });
+                if (chR.length || chG.length || chB.length) {
+                    h += '<div style="margin-top:4px;font-size:0.7rem;color:var(--text-secondary);">Per-Channel Trigger Matrix:</div>';
+                    h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:2px;font-size:0.65rem;">';
+                    ['R', 'G', 'B'].forEach(function(ch) {
+                        const arr = ch === 'R' ? chR : ch === 'G' ? chG : chB;
+                        h += '<div style="padding:4px 6px;background:var(--bg-panel);border:1px solid var(--border);">';
+                        h += '<div style="color:var(--accent);font-weight:600;margin-bottom:2px;">Channel ' + ch + '</div>';
+                        if (arr.length) { arr.forEach(function(a) { h += '<div style="color:var(--text-muted);"><span class="warn">&#x2717;</span> ' + a.replace(/_/g, ' ') + '</div>'; }); }
+                        else { h += '<div style="color:var(--text-muted);"><span class="ok">&#x2713;</span> No triggers</div>'; }
+                        h += '</div>';
+                    });
+                    h += '</div>';
+                }
+                h += '</div></div>';
+            } else {
+                h += '<div class="eb-section"><div class="ebs-head">Engine Analysis</div><div class="ebs-body">';
+                h += '<div style="padding:4px 8px;background:var(--bg-panel);border:1px solid var(--border);font-size:0.72rem;">No steganographic indicators triggered. All 3 engines returned clean results.</div>';
+                h += '</div></div>';
+            }
+
+            // ── 3. Multi-Table: Per-Channel Statistical Scoreboard ──
+            const hasStats = dcss.R != null || dlrs.R != null || dbpc.R != null || drs.R != null || pvdSm != null;
+            if (hasStats) {
+                h += '<div class="eb-section"><div class="ebs-head">Per-Channel Statistical Scoreboard</div><div class="ebs-body">';
+                h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.68rem;font-family:var(--font-mono);">';
+                h += '<thead><tr style="border-bottom:1px solid var(--border);">';
+                h += '<th style="padding:3px 6px;text-align:left;color:var(--text-muted);">Test</th>';
+                h += '<th style="padding:3px 6px;text-align:center;color:var(--text-muted);">Threshold</th>';
+                h += '<th style="padding:3px 6px;text-align:center;color:var(--text-muted);">R</th>';
+                h += '<th style="padding:3px 6px;text-align:center;color:var(--text-muted);">G</th>';
+                h += '<th style="padding:3px 6px;text-align:center;color:var(--text-muted);">B</th>';
+                h += '<th style="padding:3px 6px;text-align:center;color:var(--text-muted);">Avg</th>';
+                h += '<th style="padding:3px 6px;text-align:center;color:var(--text-muted);">Verdict</th></tr></thead><tbody>';
+
+                function scoreRow(label, threshold, rv, gv, bv, lowerIsBetter) {
+                    if (rv == null) return '';
+                    const avg = (rv + gv + bv) / 3;
+                    const isBad = lowerIsBetter ? avg < threshold : avg > threshold;
+                    const color = isBad ? 'var(--error)' : 'var(--success)';
+                    const verdict = isBad ? 'FAIL' : 'PASS';
+                    h += '<tr style="border-bottom:1px solid var(--border);">';
+                    h += '<td style="padding:3px 6px;color:var(--text-primary);">' + label + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;color:var(--text-muted);">' + threshold + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;' + (isBad && (rv < threshold === lowerIsBetter) ? '' : '') + '">' + (rv != null ? rv.toFixed(4) : '—') + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;">' + (gv != null ? gv.toFixed(4) : '—') + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;">' + (bv != null ? bv.toFixed(4) : '—') + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;font-weight:600;">' + avg.toFixed(4) + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;font-weight:600;color:' + color + ';">' + verdict + '</td>';
+                    h += '</tr>';
+                }
+
+                scoreRow('Chi-Square (p-value)', '> 0.001', dcss.R, dcss.G, dcss.B, false);
+                scoreRow('Bit-Plane Correlation', '> 0.52', dbpc.R, dbpc.G, dbpc.B, false);
+                scoreRow('LSB Zero Ratio', '0.42-0.58', dlrs.R, dlrs.G, dlrs.B, null);
+
+                if (dlrs.R != null) {
+                    const avgLr = (dlrs.R + dlrs.G + dlrs.B) / 3;
+                    const skewBad = Math.abs(avgLr - 0.5) > 0.08;
+                    h += '<tr style="border-bottom:1px solid var(--border);">';
+                    h += '<td style="padding:3px 6px;color:var(--text-primary);">LSB Skew (|avg - 0.5|)</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;color:var(--text-muted);">< 0.08</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;" colspan="3">' + Math.abs(avgLr - 0.5).toFixed(4) + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;font-weight:600;">' + Math.abs(avgLr - 0.5).toFixed(4) + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;font-weight:600;color:' + (skewBad ? 'var(--error)' : 'var(--success)') + ';">' + (skewBad ? 'FAIL' : 'PASS') + '</td>';
+                    h += '</tr>';
+                }
+
+                if (pvdSm != null) {
+                    const pvdBad = pvdSm > 0.15;
+                    h += '<tr style="border-bottom:1px solid var(--border);">';
+                    h += '<td style="padding:3px 6px;color:var(--text-primary);">PVD Smoothness</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;color:var(--text-muted);">< 0.15</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;" colspan="3">' + pvdSm.toFixed(4) + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;font-weight:600;">' + pvdSm.toFixed(4) + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;font-weight:600;color:' + (pvdBad ? 'var(--error)' : 'var(--success)') + ';">' + (pvdBad ? 'FAIL' : 'PASS') + '</td>';
+                    h += '</tr>';
+                }
+
+                if (drs.R != null) {
+                    const avgRs = (drs.R + drs.G + drs.B) / 3;
+                    const rsBad = Math.abs(avgRs - 0.5) > 0.15;
+                    h += '<tr style="border-bottom:1px solid var(--border);">';
+                    h += '<td style="padding:3px 6px;color:var(--text-primary);">RS Ratio Anomaly (|avg - 0.5|)</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;color:var(--text-muted);">< 0.15</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;" colspan="3">R=' + drs.R.toFixed(4) + ' G=' + drs.G.toFixed(4) + ' B=' + drs.B.toFixed(4) + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;font-weight:600;">' + Math.abs(avgRs - 0.5).toFixed(4) + '</td>';
+                    h += '<td style="padding:3px 6px;text-align:center;font-weight:600;color:' + (rsBad ? 'var(--error)' : 'var(--success)') + ';">' + (rsBad ? 'FAIL' : 'PASS') + '</td>';
+                    h += '</tr>';
+                }
+
+                h += '</tbody></table></div>';
+                h += '<div style="margin-top:4px;font-size:0.6rem;color:var(--text-muted);line-height:1.5;">Threshold references: Chi-square p-value from chi-square test on pixel pair frequencies. Bit-plane correlation: Pearson r between bit 0 and bit 1. LSB zero ratio: proportion of zero-valued LSBs. PVD smoothness: standard deviation of pixel difference histogram after smoothing. RS ratio: Regular group fraction from RS analysis.</div>';
+                h += '</div></div>';
+            }
+
+            // ── 4. Visual Score Bars per Channel ──
+            if (dcss.R != null) {
+                h += '<div class="eb-section"><div class="ebs-head">Visual Score Distribution (R/G/B per Test)</div><div class="ebs-body">';
+                h += '<div style="font-size:0.7rem;color:var(--text-primary);font-weight:600;margin-bottom:3px;padding:3px 6px;background:var(--bg-secondary);border:1px solid var(--border);">Chi-Square p-value <span style="font-weight:400;color:var(--text-secondary);">&bull; higher = more natural</span> <span style="font-weight:400;color:var(--text-muted);">&bull; threshold: 0.001</span></div>';
+                h += '<div style="font-size:0.68rem;padding-left:4px;">R: ' + bar(dcss.R, 0.001, 0.01) + '</div>';
+                h += '<div style="font-size:0.68rem;padding-left:4px;">G: ' + bar(dcss.G, 0.001, 0.01) + '</div>';
+                h += '<div style="font-size:0.68rem;padding-left:4px;">B: ' + bar(dcss.B, 0.001, 0.01) + '</div>';
+                h += '<div style="font-size:0.7rem;color:var(--text-primary);font-weight:600;margin:8px 0 3px;padding:3px 6px;background:var(--bg-secondary);border:1px solid var(--border);">Bit-Plane 0/1 Correlation <span style="font-weight:400;color:var(--text-secondary);">&bull; higher = more natural</span> <span style="font-weight:400;color:var(--text-muted);">&bull; threshold: 0.52</span></div>';
+                h += '<div style="font-size:0.68rem;padding-left:4px;">R: ' + bar(dbpc.R, 0.52, 1.0) + '</div>';
+                h += '<div style="font-size:0.68rem;padding-left:4px;">G: ' + bar(dbpc.G, 0.52, 1.0) + '</div>';
+                h += '<div style="font-size:0.68rem;padding-left:4px;">B: ' + bar(dbpc.B, 0.52, 1.0) + '</div>';
+                h += '<div style="font-size:0.7rem;color:var(--text-primary);font-weight:600;margin:8px 0 3px;padding:3px 6px;background:var(--bg-secondary);border:1px solid var(--border);">LSB Zero Ratio <span style="font-weight:400;color:var(--text-secondary);">&bull; 0.5 = balanced</span> <span style="font-weight:400;color:var(--text-muted);">&bull; tolerance: &plusmn;0.08</span></div>';
+                h += '<div style="font-size:0.68rem;padding-left:4px;">R: ' + bar(dlrs.R, 0.5, 1.0) + '</div>';
+                h += '<div style="font-size:0.68rem;padding-left:4px;">G: ' + bar(dlrs.G, 0.5, 1.0) + '</div>';
+                h += '<div style="font-size:0.68rem;padding-left:4px;">B: ' + bar(dlrs.B, 0.5, 1.0) + '</div>';
+                h += '</div></div>';
+            }
+
+            // ── 5. Extracted Messages (expanded) ──
+            if (msgs.length) {
+                h += '<div class="eb-section"><div class="ebs-head">Extracted Messages — Quality Scoring Breakdown (' + msgs.length + ')</div><div class="ebs-body">';
+                h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.68rem;font-family:var(--font-mono);">';
+                h += '<thead><tr style="border-bottom:1px solid var(--border);">';
+                h += '<th style="padding:3px 5px;text-align:left;color:var(--text-muted);">Channel</th>';
+                h += '<th style="padding:3px 5px;text-align:left;color:var(--text-muted);">Bit</th>';
+                h += '<th style="padding:3px 5px;text-align:left;color:var(--text-muted);">Message</th>';
+                h += '<th style="padding:3px 5px;text-align:center;color:var(--text-muted);">Score</th>';
+                h += '<th style="padding:3px 5px;text-align:center;color:var(--text-muted);">Confidence</th>';
+                h += '<th style="padding:3px 5px;text-align:left;color:var(--text-muted);">Scoring Factors</th></tr></thead><tbody>';
+                msgs.forEach(function(m) {
+                    const bits = m.bit_plane != null ? m.bit_plane : '0';
+                    const qual = m.quality_score != null ? m.quality_score : '—';
+                    const conf = m.confidence || 'low';
+                    const confClass = conf === 'high' ? 'ok' : conf === 'medium' ? 'warn' : '';
+                    const confColor = conf === 'high' ? 'var(--success)' : conf === 'medium' ? 'var(--warning)' : 'var(--text-muted)';
+                    // Decompose score factors
+                    let factors = [];
+                    if (m.text) {
+                        if (m.text.length > 20) factors.push('len=' + m.text.length);
+                        const unique = new Set(m.text.toLowerCase()).size;
+                        factors.push('chars=' + unique);
+                        let ent = 0;
+                        for (let i = 0; i < m.text.length; i++) { const c = m.text.charCodeAt(i); if (c) ent += Math.abs(c) / 255; }
+                        factors.push('entropy=' + (ent / Math.max(m.text.length, 1)).toFixed(2));
+                        if (/flag|secret|hidden|password|key|admin/i.test(m.text)) factors.push('<span class="warn">KEYWORD</span>');
+                    }
+                    h += '<tr style="border-bottom:1px solid var(--border);">';
+                    h += '<td style="padding:3px 5px;color:var(--accent);font-weight:600;">' + m.channel + '</td>';
+                    h += '<td style="padding:3px 5px;color:var(--text-muted);">' + bits + '</td>';
+                    h += '<td style="padding:3px 5px;color:var(--text-primary);word-break:break-all;max-width:180px;">' + m.text + '</td>';
+                    h += '<td style="padding:3px 5px;text-align:center;font-weight:600;">' + qual + '</td>';
+                    h += '<td style="padding:3px 5px;text-align:center;font-weight:600;color:' + confColor + ';">' + (conf === 'high' ? 'HIGH' : conf === 'medium' ? 'MED' : 'LOW') + '</td>';
+                    h += '<td style="padding:3px 5px;font-size:0.6rem;color:var(--text-muted);">' + (factors.length ? factors.join(', ') : '—') + '</td>';
+                    h += '</tr>';
+                });
+                h += '</tbody></table></div>';
+                h += '<div style="margin-top:4px;font-size:0.6rem;color:var(--text-muted);line-height:1.5;">Scoring: quality_score = len(text) + unique_chars + entropy + keyword_bonus. Scores < 5 discarded. >= 15 = high confidence, >= 8 = medium, else low.</div>';
+                h += '</div></div>';
+            }
+
+            // ── 6. Structural Payloads (expanded with hex) ──
+            if (structural && structural.length) {
+                h += '<div class="eb-section"><div class="ebs-head">Structural Payloads — Raw Analysis (' + structural.length + ')</div><div class="ebs-body">';
+                structural.forEach(function(p, pi) {
+                    h += '<div style="padding:4px 6px;margin:2px 0;background:var(--bg-panel);border:1px solid var(--border);">';
+                    h += '<div style="display:flex;align-items:center;gap:6px;font-size:0.7rem;">';
+                    h += '<span class="warn" style="font-size:0.65rem;">' + (p.type || 'unknown') + '</span>';
+                    if (p.size != null) h += '<span style="color:var(--text-muted);">size: <strong>' + p.size + ' bytes</strong></span>';
+                    if (p.entropy != null) {
+                        const entColor = p.entropy > 6 ? 'var(--error)' : p.entropy > 4 ? 'var(--warning)' : 'var(--success)';
+                        h += '<span style="color:var(--text-muted);">entropy: <strong style="color:' + entColor + ';">' + p.entropy.toFixed(2) + '</strong></span>';
+                    }
+                    h += '</div>';
+                    if (p.text) h += '<div style="font-size:0.7rem;color:var(--text-primary);margin-top:2px;">text: "' + p.text + '"</div>';
+                    // Simulated hex dump of first bytes if payload has data
+                    if (p.size > 0) {
+                        const hexLen = Math.min(p.size, 64);
+                        h += '<div style="margin-top:2px;font-size:0.6rem;color:var(--text-muted);font-family:var(--font-mono);word-break:break-all;background:var(--bg-primary);padding:3px 5px;border:1px solid var(--border);">';
+                        h += 'First ' + hexLen + ' bytes (hex dump): ';
+                        // Generate placeholder hex — actual data isn't stored in the detail view, show available metadata
+                        h += '<span style="color:var(--text-dim);">[payload hex not retained in report — run decode for full extraction]</span>';
+                        h += '</div>';
+                    }
+                    h += '</div>';
+                });
+                h += '</div></div>';
+            }
+
+            // ── 7. Metadata Findings (expanded) ──
+            if (meta && meta.length) {
+                h += '<div class="eb-section"><div class="ebs-head">Metadata Findings — Field Analysis (' + meta.length + ')</div><div class="ebs-body">';
+                meta.forEach(function(mf) {
+                    h += '<div style="padding:4px 6px;margin:2px 0;background:var(--bg-panel);border:1px solid var(--border);font-size:0.7rem;">';
+                    h += '<div style="display:flex;align-items:center;gap:6px;">';
+                    h += '<span style="color:var(--accent);font-weight:600;">' + (mf.type || 'unknown') + '</span>';
+                    if (mf.field) h += '<span style="color:var(--text-muted);">field: <strong>' + mf.field + '</strong></span>';
+                    if (mf.size != null) {
+                        const sizeColor = mf.size > 500 ? 'var(--error)' : 'var(--success)';
+                        h += '<span style="color:var(--text-muted);">size: <strong style="color:' + sizeColor + ';">' + mf.size + ' bytes</strong></span>';
+                    }
+                    h += '</div>';
+                    if (mf.text) h += '<div style="color:var(--text-primary);margin-top:1px;word-break:break-all;">content: "' + mf.text + '"</div>';
+                    if (mf.content) h += '<div style="color:var(--text-primary);margin-top:1px;word-break:break-all;">raw: "' + mf.content + '"</div>';
+                    h += '</div>';
+                });
+                h += '</div></div>';
+            }
+
+            // ── 8. Quick Check Gate Report ──
+            h += '<div class="eb-section"><div class="ebs-head">Quick-Check Gate — Pre-Filter Results</div><div class="ebs-body">';
+            h += '<div style="padding:4px 8px;background:var(--bg-panel);border:1px solid var(--border);font-size:0.72rem;">';
+            h += 'The quick-check gate runs before full 3-engine analysis. It scans <strong>500 pixels</strong> across <strong>2 bit planes</strong> (0 and 1) in all <strong>3 color channels</strong> for a total of <strong>3000 sample points</strong>. ';
+            if (s.flagged) {
+                h += 'The gate flagged the file as suspicious, triggering full analysis. ';
+            } else {
+                h += 'The gate passed the file as clean; full 3-engine analysis was still run for thoroughness. ';
+            }
+            if (samples) h += 'Full analysis sampled <strong>' + samples.toLocaleString() + '</strong> pixels (max ' + (100000).toLocaleString() + ').';
+            h += '</div></div></div>';
+
+            // ── 9. Threshold Reference Table ──
+            h += '<div class="eb-section"><div class="ebs-head">Threshold Reference — All Detection Tests</div><div class="ebs-body">';
+            h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.65rem;font-family:var(--font-mono);">';
+            h += '<thead><tr style="border-bottom:1px solid var(--border);">';
+            h += '<th style="padding:2px 5px;text-align:left;color:var(--text-muted);">Test</th>';
+            h += '<th style="padding:2px 5px;text-align:left;color:var(--text-muted);">Target</th>';
+            h += '<th style="padding:2px 5px;text-align:center;color:var(--text-muted);">Threshold</th>';
+            h += '<th style="padding:2px 5px;text-align:center;color:var(--text-muted);">Engine</th>';
+            h += '<th style="padding:2px 5px;text-align:left;color:var(--text-muted);">Interpretation</th></tr></thead><tbody>';
+            var refs = [
+                ['Chi-Square', 'Pixel pair freq', 'p > 0.001', 'Statistical', 'p < 0.001 means pixel pairs are too uniform (likely LSB stego)'],
+                ['Bit-Plane Corr', 'Bit 0 vs Bit 1', 'r > 0.52', 'Statistical', 'r < 0.52 means bit planes decorrelated (randomized LSB)'],
+                ['LSB Zero Ratio', 'LSB bit values', '0.42 - 0.58', 'Statistical', 'Ratio outside range means unbalanced LSB distribution'],
+                ['LSB Skew', '|ratio - 0.5|', '< 0.08', 'Statistical', 'Skew > 0.08 indicates non-uniform payload embedding'],
+                ['PVD Smoothness', 'Pixel diff hist', '< 0.15', 'Statistical', 'Smoothness > 0.15 means diff histogram unnaturally flattened'],
+                ['RS Analysis', 'Regular group %', '0.35 - 0.65', 'Statistical', '|R - 0.5| > 0.15 means LSB asymmetry detected'],
+                ['Quick Gate', 'Text in LSB bits', 'any text >= 4 chars', 'Extraction', 'Text found in quick sample promotes to full scan'],
+                ['Structural', 'Post-EOF bytes', 'size > 0', 'Structural', 'Any bytes after file marker = appended payload'],
+                ['Metadata Size', 'Field byte count', '< 500 / < 2000', 'Metadata', 'Fields > 500B or EXIF > 2000B may hide payloads']
+            ];
+            refs.forEach(function(row) {
+                h += '<tr style="border-bottom:1px solid var(--border);">';
+                h += '<td style="padding:2px 5px;color:var(--text-primary);">' + row[0] + '</td>';
+                h += '<td style="padding:2px 5px;color:var(--text-muted);">' + row[1] + '</td>';
+                h += '<td style="padding:2px 5px;text-align:center;color:var(--text-muted);">' + row[2] + '</td>';
+                h += '<td style="padding:2px 5px;text-align:center;color:var(--text-muted);">' + row[3] + '</td>';
+                h += '<td style="padding:2px 5px;color:var(--text-secondary);font-size:0.6rem;">' + row[4] + '</td>';
+                h += '</tr>';
+            });
+            h += '</tbody></table></div></div></div>';
+
+            // ── 10. Analyst Conclusion ──
+            h += '<div class="eb-section"><div class="ebs-head">Analyst Conclusion &amp; Recommended Actions</div><div class="ebs-body">';
+            if (s.flagged) {
+                h += '<div style="padding:6px 10px;background:var(--bg-panel);border:1px solid var(--border);font-size:0.72rem;line-height:1.6;">';
+                h += '<strong style="color:' + riskColor + ';">Risk: ' + risk + '</strong><br>';
+                h += 'File <strong>' + r.filename + '</strong> triggered <strong>' + reasons.length + '</strong> steganographic indicator(s) across ' + Object.keys(seenEngines).length + ' detection methods.<br>';
+                h += '<ul style="margin:4px 0 0 16px;padding:0;">';
+                if (sevCount.statistical) h += '<li><strong>' + sevCount.statistical + '</strong> statistical anomaly(ies) — chi-square, bit-plane, LSB, PVD, and/or RS analysis flagged anomalous distributions consistent with LSB embedding.</li>';
+                if (sevCount.structural) h += '<li><strong>' + sevCount.structural + '</strong> structural finding(s) — data appended after end-of-file marker.</li>';
+                if (sevCount.extraction) h += '<li><strong>' + sevCount.extraction + '</strong> extraction(s) — text decoded from LSB bit planes.</li>';
+                if (sevCount.metadata) h += '<li><strong>' + sevCount.metadata + '</strong> metadata finding(s) — suspicious or oversized metadata fields.</li>';
+                h += '</ul>';
+                h += '<div style="margin-top:4px;"><strong>Recommended actions:</strong><br>';
+                h += '&bull; Download the file and run offline forensic analysis (e.g., AperiSolve, zsteg, StegSolve).<br>';
+                if (msgs.length) h += '&bull; Decoded messages should be reviewed for exfiltration indicators.<br>';
+                if (structural && structural.length) h += '&bull; Post-EOF payload should be extracted and analyzed independently.<br>';
+                h += '&bull; Correlate with source, sender history, and file origin metadata.<br>';
+                h += '&bull; If confirmed, follow incident response protocol for data exfiltration.</div>';
+                h += '</div>';
+            } else {
+                h += '<div style="padding:6px 10px;background:var(--bg-panel);border:1px solid var(--border);font-size:0.72rem;">';
+                h += 'No steganographic indicators detected. File <strong>' + r.filename + '</strong> passes all 3 detection engines:<br>';
+                h += '&bull; <strong>Spatial LSB</strong> — bit-plane analysis found no embedded data patterns.<br>';
+                h += '&bull; <strong>Structural Post-EOF</strong> — no data appended after end-of-file marker.<br>';
+                h += '&bull; <strong>Metadata</strong> — no suspicious or oversized metadata fields.<br>';
+                h += 'All statistical scores within expected natural image ranges. No further action required.</div>';
+            }
+            h += '</div></div>';
+
+            document.getElementById('elabTitle').textContent = 'Steganography Forensic Elaboration — ' + r.filename;
+            document.getElementById('elabBody').innerHTML = h;
+            document.getElementById('elaborateOverlay').classList.add('open');
+        }
+
+        document.getElementById('elaborateOverlay').addEventListener('click', function(e) {
+            if (e.target === this) closeElaborate();
+        });
 
         function displayError(data) {
             document.getElementById('summaryBody').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px 0;"><div class="result-item error" style="animation:none;display:inline-block;text-align:left;"><div class="ri-header"><span class="ri-name">Error</span><span class="ri-badge error">FAILED</span></div><div class="ri-msg">' + JSON.stringify(data, null, 2) + '</div></div></td></tr>';
