@@ -93,6 +93,42 @@ Get-NetTCPConnection -LocalPort 5001,5002,5003,8080 | Stop-Process -Id {$_.Ownin
 
 ## Recent Changes (Jun 12, 2026)
 
+### SOC UI Redesign
+- Complete dark theme overhaul with industrial SOC palette (`#0a0e14` base, `#00bcd4` accent, `#00e676` success, `#ff1744` error)
+- Light theme re-added with professional off-white (`#edeff2`) and matching variables
+- **Inter** (UI) + **JetBrains Mono** (data) fonts loaded from Google Fonts
+- All typography converted to monospace for data-heavy elements (tables, latency, logs, file names)
+- Flat/square borders (`border-radius: 4px/2px/1px`), no rounded pills or gradients
+- Header redesigned as SOC console bar: `GW` brand icon, `SECURITY GATEWAY` title, live status indicators (ALL SYSTEMS NOMINAL with dot), file counter, active API key
+- Brighter text levels: primary `#eef2f8`, secondary `#b0bfd0`, muted `#6a7e94`
+- Service cards compact with all-caps labels (GPU/POLICY/SCANNER), ONLINE/OFFLINE status
+- 5-stage latency panel: Auth (cyan), Sanitize (amber), Stego (purple), Scan (cyan), Infer (green), Total
+- Upload button: outlined style, fills on hover, uppercase monospace
+- Summary table: 8 columns (File, Status, Auth, Sanitize, Stego, Scan, Infer, Total), 2px header bottom border, dark row hover
+- Modal: flat dark panel, solid border, mono file names, no gradient accents
+- Status badges: flat color blocks instead of pill shapes
+- Empty states in all-caps (`AWAITING FILE UPLOAD`, `PROCESSING N FILE(S)...`)
+
+### Elaborate Overlay (Stego Forensics)
+- "ELABORATE" button next to Reasons in Detailed Report → Steganography Detection section
+- Opens a rich overlay with 10 forensic sections:
+  1. **Executive Summary** — status badges, per-engine breakdown, risk level (LOW/MEDIUM/HIGH/CRITICAL)
+  2. **Triggered Engine Analysis** — per-engine descriptions with thresholds, per-channel trigger matrix (R/G/B)
+  3. **Per-Channel Statistical Scoreboard** — table with R/G/B/Avg/Verdict for Chi-Square, Bit-Plane, LSB, PVD, RS (PASS/FAIL)
+  4. **Visual Score Distribution** — horizontal bar charts per channel with threshold markers and color coding
+  5. **Extracted Messages — Quality Scoring** — table with Channel, Bit, Message, Score, Confidence, decomposed scoring factors
+  6. **Structural Payloads** — type, size, entropy, text, hex dump note
+  7. **Metadata Findings** — field name, type, size (color-coded), content
+  8. **Quick-Check Gate** — methodology (500px × 2 planes × 3 channels = 3000 samples)
+  9. **Threshold Reference Table** — all 9 detection tests with targets, thresholds, engines, interpretation
+  10. **Analyst Conclusion** — bulleted findings, recommended forensic actions
+
+### Flagged Files Filter
+- Red "N Flagged" button appears next to file count badge after processing completes
+- Counts rejected + errored + stego-flagged files
+- Clicking filters the results table to show only flagged rows
+- Button sits in a wrapper div right next to the file count badge on the right side of the card title
+
 ### Strong Stego Detection Rewrite
 - **Per-channel Chi-square** — tests R, G, B individually (was global)
 - **Bit planes 0,1,2** analyzed for each RGB + Alpha + interleaved RGB
