@@ -241,6 +241,20 @@
             font-weight: 700;
             font-family: var(--font-mono);
         }
+        .card-title .flagged-btn {
+            font-size: 0.6rem;
+            padding: 2px 10px;
+            background: var(--error);
+            color: #fff;
+            border: none;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            cursor: pointer;
+            transition: opacity var(--transition);
+        }
+        .card-title .flagged-btn:hover { opacity: 0.85; }
         .full-width { grid-column: 1 / -1; }
         .two-col { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
@@ -1171,7 +1185,10 @@
         <div class="card full-width">
             <div class="card-title">
                 Processing Results
-                <span class="badge" id="resultCount">0 files</span>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <button class="flagged-btn" id="flaggedBtn" style="display:none;">0 Flagged</button>
+                    <span class="badge" id="resultCount">0 files</span>
+                </div>
             </div>
             <div class="results-layout" id="results">
                 <div class="summary-table-wrap">
@@ -1417,6 +1434,23 @@
             const errors = data.results.filter(r => r.status === 'error').length;
             count.textContent = data.total_files + ' files';
             document.getElementById('headerFileCount').textContent = data.total_files;
+            window._lastResults = data.results;
+
+            // Flagged button
+            let flaggedCount = 0;
+            data.results.forEach(function(rr) {
+                if (rr.status === 'rejected' || rr.status === 'error') flaggedCount++;
+                else if (rr.status === 'success' && rr.steganography && rr.steganography.flagged) flaggedCount++;
+            });
+            const flaggedBtn = document.getElementById('flaggedBtn');
+            if (flaggedCount > 0) {
+                flaggedBtn.textContent = flaggedCount + ' Flagged';
+                flaggedBtn.style.display = 'inline-block';
+                flaggedBtn.onclick = showFlaggedOnly;
+            } else {
+                flaggedBtn.style.display = 'none';
+                flaggedBtn.onclick = null;
+            }
 
             // Store results data for detail view
             let resultsData = data.results;
@@ -2022,6 +2056,18 @@
 
         function closeElaborate() {
             document.getElementById('elaborateOverlay').classList.remove('open');
+        }
+
+        function showFlaggedOnly() {
+            const rows = document.querySelectorAll('#summaryBody .summary-row');
+            rows.forEach(function(row) {
+                const idx = parseInt(row.dataset.index);
+                const r = window._lastResults ? window._lastResults[idx] : null;
+                if (!r) { row.style.display = ''; return; }
+                const isFlagged = r.status === 'rejected' || r.status === 'error' ||
+                    (r.status === 'success' && r.steganography && r.steganography.flagged);
+                row.style.display = isFlagged ? '' : 'none';
+            });
         }
 
         function openElaborate(idx) {
