@@ -14,3 +14,11 @@ build/
 # OS
 Thumbs.db
 .DS_Store
+
+# Logs
+logs/
+*.log
+*.err
+
+# Backups
+*.bak
