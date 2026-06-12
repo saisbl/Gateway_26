@@ -462,6 +462,37 @@
             animation: fadeIn 150ms ease;
         }
         .modal-overlay.open { display: flex; }
+
+        .preview-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 40px;
+            animation: fadeIn 200ms ease;
+            cursor: zoom-out;
+        }
+        .preview-overlay.open { display: flex; }
+        .preview-full {
+            max-width: 95vw;
+            max-height: 95vh;
+            object-fit: contain;
+            border-radius: var(--radius-sm);
+            box-shadow: 0 8px 60px rgba(0,0,0,0.5);
+        }
+        .preview-close {
+            position: absolute;
+            top: 24px;
+            right: 32px;
+            font-size: 2.4rem;
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            transition: color 150ms;
+            line-height: 1;
+        }
+        .preview-close:hover { color: #fff; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         .modal {
@@ -603,7 +634,8 @@
         .inspect-timeline .it-seg { height: 100%; }
         .it-seg.auth { background: var(--accent); }
         .it-seg.sanitize { background: #f59e0b; }
-        .it-seg.scan { background: #8b5cf6; }
+        .it-seg.stego { background: #a855f7; }
+        .it-seg.scan { background: #06b6d4; }
         .it-seg.gpu { background: var(--success); }
 
         .inspect-steps {
@@ -658,6 +690,22 @@
         .decode-msg .dm-text { color: var(--text-primary); word-break: break-all; }
         .decode-msg.structural .dm-channel { color: var(--warning); }
         .decode-msg.metadata .dm-channel { color: var(--info); }
+
+        .stego-table { width: 100%; border-collapse: collapse; font-size: 0.76rem; margin-top: 4px; }
+        .stego-table th { text-align: left; padding: 5px 8px; font-weight: 600; color: var(--text-muted); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); }
+        .stego-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+        .stego-table tr:last-child td { border-bottom: none; }
+        .stego-table .st-cell { display: flex; align-items: center; gap: 6px; }
+        .st-msg { color: var(--text-primary); font-family: monospace; word-break: break-all; }
+        .st-conf { font-size: 0.65rem; padding: 1px 6px; border-radius: 99px; font-weight: 600; white-space: nowrap; }
+        .st-conf.high { background: var(--success-bg); color: var(--success); }
+        .st-conf.medium { background: rgba(234,179,8,0.12); color: #ca8a04; }
+        .st-conf.low { background: rgba(100,116,139,0.12); color: var(--text-muted); }
+        .st-channel { font-weight: 600; color: var(--accent-light); white-space: nowrap; }
+        .st-bit { font-size: 0.65rem; color: var(--text-muted); }
+        .st-score { font-size: 0.65rem; color: var(--text-muted); white-space: nowrap; }
+        .struct-tag { display:inline-block; font-size:0.6rem; padding:1px 6px; border-radius:99px; background:rgba(234,179,8,0.12); color:#ca8a04; font-weight:600; text-transform:uppercase; letter-spacing:0.03em; }
+        .meta-tag { display:inline-block; font-size:0.6rem; padding:1px 6px; border-radius:99px; background:rgba(59,130,246,0.12); color:var(--accent-light); font-weight:600; text-transform:uppercase; letter-spacing:0.03em; }
 
         /* Summary Table */
         .summary-table-wrap { overflow-x: auto; }
@@ -1033,6 +1081,12 @@
         </div>
     </div>
 
+    <!-- Image Preview Lightbox -->
+    <div class="preview-overlay" id="previewOverlay" onclick="closePreview()">
+        <span class="preview-close">&times;</span>
+        <img class="preview-full" id="previewFullImg" src="" alt="Preview">
+    </div>
+
     <!-- Detailed Report Modal -->
     <div class="modal-overlay" id="reportModal">
         <div class="modal">
@@ -1267,6 +1321,20 @@
             document.body.style.overflow = '';
         }
 
+        function openPreview(src) {
+            const overlay = document.getElementById('previewOverlay');
+            document.getElementById('previewFullImg').src = src;
+            overlay.classList.add('open');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closePreview() {
+            const overlay = document.getElementById('previewOverlay');
+            overlay.classList.remove('open');
+            document.getElementById('previewFullImg').src = '';
+            document.body.style.overflow = '';
+        }
+
         function renderModal() {
             const r = modalData[modalIdx];
             if (!r) { closeModal(); return; }
@@ -1290,7 +1358,17 @@
             // Section: File Info
             html += '<div class="inspect-section">';
             html += '<div class="is-title">File Information<span class="line"></span></div>';
-            html += '<div class="inspect-grid">';
+            html += '<div style="display:flex;gap:14px;">';
+            // Thumbnail preview
+            html += '<div style="flex-shrink:0;width:100px;height:100px;border-radius:var(--radius-sm);border:1px solid var(--border);overflow:hidden;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;">';
+            if (modalBatchId != null && modalBatchId !== undefined && r.status !== 'error') {
+                html += '<img id="modalPreview" src="/preview/' + modalBatchId + '/' + modalIdx + '" style="max-width:100%;max-height:100%;object-fit:contain;cursor:pointer;" onerror="this.style.display=\'none\'" onclick="openPreview(\'/preview/' + modalBatchId + '/' + modalIdx + '\')">';
+            } else {
+                html += '<span style="font-size:2rem;opacity:0.3;">&#x1f5bc;</span>';
+            }
+            html += '</div>';
+            // File metadata beside preview
+            html += '<div class="inspect-grid" style="flex:1;">';
             html += '<div class="inspect-field"><div class="if-label">Filename</div><div class="if-value">' + r.filename + '</div></div>';
             html += '<div class="inspect-field"><div class="if-label">Extension</div><div class="if-value">.' + ext + '</div></div>';
             const fsize = r.scanning?.file_size_bytes;
@@ -1305,20 +1383,22 @@
             }
             html += '<div class="inspect-field"><div class="if-label">Status</div><div class="if-value ' + (r.status === 'success' ? 'good' : 'bad') + '">' + r.status.toUpperCase() + '</div></div>';
             html += '<div class="inspect-field"><div class="if-label">Index</div><div class="if-value">#' + (modalIdx + 1) + ' of ' + totalFiles + '</div></div>';
-            html += '</div></div>';
+            html += '</div></div></div>';
 
             if (r.status === 'success') {
                 // Section: Latency Timeline
                 const lat = r.latency || {};
                 const a = lat.authorization_ms || 0;
                 const sa = lat.sanitization_ms || 0;
+                const st = lat.stego_detection_ms || 0;
                 const sc = lat.scanning_ms || 0;
                 const g = lat.inference_ms || 0;
-                const secTotal = lat.total_security_ms || (a + sa + sc);
-                const grandTotal = lat.total_processing_ms || (a + sa + sc + g);
+                const secTotal = lat.total_security_ms || (a + sa + st + sc);
+                const grandTotal = lat.total_processing_ms || (a + sa + st + sc + g);
                 const maxVal = Math.max(grandTotal, 1);
                 const aPct = (a / maxVal * 100).toFixed(1);
                 const saPct = (sa / maxVal * 100).toFixed(1);
+                const stPct = (st / maxVal * 100).toFixed(1);
                 const sPct = (sc / maxVal * 100).toFixed(1);
                 const gPct = (g / maxVal * 100).toFixed(1);
 
@@ -1327,12 +1407,14 @@
                 html += '<div class="inspect-timeline">';
                 html += '<div class="it-seg auth" style="width:' + aPct + '%" title="Authorization: ' + a.toFixed(1) + 'ms"></div>';
                 html += '<div class="it-seg sanitize" style="width:' + saPct + '%" title="Sanitization: ' + sa.toFixed(1) + 'ms"></div>';
+                html += '<div class="it-seg stego" style="width:' + stPct + '%" title="Stego Detection: ' + st.toFixed(1) + 'ms"></div>';
                 html += '<div class="it-seg scan" style="width:' + sPct + '%" title="Scanning: ' + sc.toFixed(1) + 'ms"></div>';
                 html += '<div class="it-seg gpu" style="width:' + gPct + '%" title="Inference: ' + g.toFixed(1) + 'ms"></div>';
                 html += '</div>';
                 html += '<div class="inspect-grid">';
                 html += '<div class="inspect-field"><div class="if-label">Authorization</div><div class="if-value">' + a.toFixed(1) + ' <span class="unit">ms</span></div></div>';
                 html += '<div class="inspect-field"><div class="if-label">Sanitization</div><div class="if-value">' + sa.toFixed(1) + ' <span class="unit">ms</span></div></div>';
+                html += '<div class="inspect-field"><div class="if-label">Stego Detection</div><div class="if-value">' + st.toFixed(1) + ' <span class="unit">ms</span></div></div>';
                 html += '<div class="inspect-field"><div class="if-label">Scanning</div><div class="if-value">' + sc.toFixed(1) + ' <span class="unit">ms</span></div></div>';
                 html += '<div class="inspect-field"><div class="if-label">Inference</div><div class="if-value">' + g.toFixed(1) + ' <span class="unit">ms</span></div></div>';
                 html += '<div class="inspect-field"><div class="if-label">GPU Model</div><div class="if-value">' + (r.inference?.model || 'mock-vision-v1') + '</div></div>';
@@ -1487,22 +1569,36 @@
                         area.innerHTML = '<div class="inspect-msg error">' + data.error + '</div>';
                         return;
                     }
-                    let h = '';
+                    let h = '<div style="margin-top:4px;">';
                     if (data.flagged) {
                         if (data.extracted_messages && data.extracted_messages.length) {
+                            h += '<table class="stego-table"><thead><tr><th>Channel</th><th>Message</th><th>Confidence</th><th>Score</th></tr></thead><tbody>';
                             data.extracted_messages.forEach(m => {
-                                h += '<div class="decode-msg" style="margin-bottom:4px;padding:6px 10px;"><span style="font-size:0.7rem;color:var(--text-muted);">Extracted message</span> <span class="dm-channel" style="font-size:0.82rem;">[' + m.channel + ': ' + m.text + ']</span></div>';
+                                const bits = m.bit_plane != null ? ' <span class="st-bit">(bit ' + m.bit_plane + ')</span>' : '';
+                                const conf = m.confidence || '';
+                                const qual = m.quality_score != null ? m.quality_score : '—';
+                                const confClass = conf === 'high' ? 'high' : conf === 'medium' ? 'medium' : 'low';
+                                h += '<tr><td><div class="st-cell"><span class="st-channel">' + m.channel + '</span>' + bits + '</div></td><td><span class="st-msg">' + m.text + '</span></td><td><span class="st-conf ' + confClass + '">' + (conf || '—') + '</span></td><td><span class="st-score">' + qual + '</span></td></tr>';
                             });
+                            h += '</tbody></table>';
                         }
                         if (data.structural_payloads && data.structural_payloads.length) {
+                            h += '<div style="margin-top:6px;font-size:0.72rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Structural Payloads</div>';
+                            h += '<table class="stego-table"><thead><tr><th>Format</th><th>Type</th><th>Detail</th></tr></thead><tbody>';
                             data.structural_payloads.forEach(s => {
-                                h += '<div class="decode-msg structural" style="margin-bottom:2px;padding:4px 8px;"><span style="font-size:0.7rem;color:var(--text-muted);">Structural</span> <span class="dm-channel" style="font-size:0.78rem;">[' + (s.type || 'payload') + ': ' + (s.text || s.description || '') + ']</span></div>';
+                                const fmt = s.format || '—';
+                                const type_lbl = s.type === 'post_eof_payload' ? 'Appended Data' : 'Hidden Text';
+                                h += '<tr><td><div class="st-cell"><span class="st-channel">' + fmt + '</span></div></td><td><span class="struct-tag">' + type_lbl + '</span></td><td><span class="st-msg">' + (s.text || s.description || '') + '</span></td></tr>';
                             });
+                            h += '</tbody></table>';
                         }
                         if (data.metadata_findings && data.metadata_findings.length) {
+                            h += '<div style="margin-top:6px;font-size:0.72rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Metadata Findings</div>';
+                            h += '<table class="stego-table"><thead><tr><th>Field</th><th>Content</th></tr></thead><tbody>';
                             data.metadata_findings.forEach(m => {
-                                h += '<div class="decode-msg metadata" style="margin-bottom:2px;padding:4px 8px;"><span style="font-size:0.7rem;color:var(--text-muted);">Metadata</span> <span class="dm-channel" style="font-size:0.78rem;">[' + (m.field || m.type || 'meta') + ': ' + (m.content || m.description || '') + ']</span></div>';
+                                h += '<tr><td><span class="meta-tag">' + (m.field || m.type || 'meta') + '</span></td><td><span class="st-msg">' + (m.content || m.description || '') + '</span></td></tr>';
                             });
+                            h += '</tbody></table>';
                         }
                         if (!h) {
                             h = '<div class="an-msg" style="padding:6px 10px;font-size:0.78rem;">&#x26a0; ' + data.reasons.join(', ') + '</div>';
@@ -1510,6 +1606,7 @@
                     } else {
                         h = '<div class="is-value" style="color:var(--success);font-size:0.82rem;padding:6px 0;">No hidden content detected.</div>';
                     }
+                    h += '</div>';
                     area.innerHTML = h;
                 })
                 .catch(err => {
@@ -1517,6 +1614,11 @@
                     btn.disabled = false;
                     area.innerHTML = '<div class="inspect-msg error">Decode failed: ' + err.message + '</div>';
                 });
+        }
+
+        function _latRow(label, val, max, rgb) {
+            const pct = Math.max((val / max) * 100, 0.5);
+            return '<tr><td style="font-weight:600;color:var(--text-muted);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.03em;">' + label + '</td><td style="white-space:nowrap;"><span style="font-weight:600;font-size:0.85rem;">' + val.toFixed(1) + '</span> <span style="font-weight:400;color:var(--text-muted);font-size:0.72rem;">ms</span></td><td style="width:40%;"><div style="height:6px;background:var(--bg-secondary);border-radius:99px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:rgba(' + rgb + ',0.7);border-radius:99px;transition:width 300ms;"></div></div></td></tr>';
         }
 
         function showDetailedReport() {
@@ -1609,51 +1711,7 @@
                 h += '</div></div>';
             }
 
-            // ── 4. Steganography Scan (statistical) ──
-            const stegoScan = chk?.steganography;
-            if (stegoScan) {
-                h += '<div class="rp-section"><div class="rp-title">Steganography Scan (Statistical)<span class="line"></span></div><div class="rp-grid three">';
-                h += f('Flagged', stegoScan.flagged ? 'Yes' : 'No', stegoScan.flagged ? 'bad' : 'good');
-                h += f('Chi-Square', stegoScan.chi_square_score != null ? stegoScan.chi_square_score.toFixed(4) : '—');
-                h += f('LSB Zero Ratio', stegoScan.lsb_zero_ratio != null ? stegoScan.lsb_zero_ratio.toFixed(4) : '—');
-                h += f('Bitplane Correlation', stegoScan.bitplane_correlation != null ? stegoScan.bitplane_correlation.toFixed(4) : '—');
-                h += f('Samples Analyzed', stegoScan.samples_analyzed != null ? stegoScan.samples_analyzed.toLocaleString() : '—');
-                const reasons = stegoScan.reasons;
-                h += f('Reasons', reasons && reasons.length ? reasons.join(', ') : 'None');
-                h += '</div>';
-
-                var rpScanIdx = 0;
-                if (stegoScan.extracted_messages && stegoScan.extracted_messages.length) {
-                    var sid = 'rp_scollapse_' + (rpScanIdx++);
-                    h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + sid + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:6px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Scan LSB Texts <span style="font-weight:400;color:var(--text-muted);">(' + stegoScan.extracted_messages.length + ')</span></div>';
-                    h += '<div id="' + sid + '" style="display:none;">';
-                    stegoScan.extracted_messages.forEach(m => {
-                        h += '<div class="rp-stego-msg"><span class="rps-channel">[' + m.channel + ']</span><span class="rps-text">' + m.text + '</span></div>';
-                    });
-                    h += '</div>';
-                }
-                if (stegoScan.structural_payloads && stegoScan.structural_payloads.length) {
-                    var sid = 'rp_scollapse_' + (rpScanIdx++);
-                    h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + sid + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:4px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Scan Structural <span style="font-weight:400;color:var(--text-muted);">(' + stegoScan.structural_payloads.length + ')</span></div>';
-                    h += '<div id="' + sid + '" style="display:none;">';
-                    stegoScan.structural_payloads.forEach(s => {
-                        h += '<div class="rp-stego-msg" style="border-left:2px solid var(--warning);"><span class="rps-channel">[' + (s.type || 'payload') + ']</span><span class="rps-text">' + (s.text || s.description || '') + '</span></div>';
-                    });
-                    h += '</div>';
-                }
-                if (stegoScan.metadata_findings && stegoScan.metadata_findings.length) {
-                    var sid = 'rp_scollapse_' + (rpScanIdx++);
-                    h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + sid + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:4px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Scan Metadata <span style="font-weight:400;color:var(--text-muted);">(' + stegoScan.metadata_findings.length + ')</span></div>';
-                    h += '<div id="' + sid + '" style="display:none;">';
-                    stegoScan.metadata_findings.forEach(m => {
-                        h += '<div class="rp-stego-msg" style="border-left:2px solid var(--info);"><span class="rps-channel">[' + (m.field || m.type || 'meta') + ']</span><span class="rps-text">' + (m.content || m.description || '') + '</span></div>';
-                    });
-                    h += '</div>';
-                }
-                h += '</div>';
-            }
-
-            // ── 5. Steganography Detection (sanitize-time 3-engine) ──
+            // ── 4. Steganography Analysis ──
             const stegoDetect = r.steganography;
             if (stegoDetect) {
                 h += '<div class="rp-section"><div class="rp-title">Steganography Detection (3-Engine)<span class="line"></span></div>';
@@ -1662,61 +1720,118 @@
                 const reasons = stegoDetect.reasons;
                 h += f('Reasons', reasons && reasons.length ? reasons.join(', ') : 'None', null, true);
                 h += '</div>';
+                h += '<div class="rp-section" style="margin-top:2px;border:1px solid var(--border);border-radius:var(--radius-sm);">';
+                h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'rp_stats_body\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);padding:6px 10px;user-select:none;display:flex;align-items:center;gap:6px;"><span class="rpt-icon">&#x25b6;</span> Statistical Details</div>';
+                h += '<div id="rp_stats_body" style="display:none;padding:6px 10px 10px;border-top:1px solid var(--border);">';
+                h += '<div class="rp-grid three">';
+                const dcss = stegoDetect.chi_square_scores;
+                if (dcss) {
+                    h += f('Chi-Square R', dcss.R != null ? dcss.R.toFixed(4) : '—');
+                    h += f('Chi-Square G', dcss.G != null ? dcss.G.toFixed(4) : '—');
+                    h += f('Chi-Square B', dcss.B != null ? dcss.B.toFixed(4) : '—');
+                }
+                const dlrs = stegoDetect.lsb_zero_ratios;
+                if (dlrs) {
+                    h += f('LSB Zero R', dlrs.R != null ? dlrs.R.toFixed(4) : '—');
+                    h += f('LSB Zero G', dlrs.G != null ? dlrs.G.toFixed(4) : '—');
+                    h += f('LSB Zero B', dlrs.B != null ? dlrs.B.toFixed(4) : '—');
+                }
+                const dbpc = stegoDetect.bitplane_correlations;
+                if (dbpc) {
+                    h += f('BP Correlation R', dbpc.R != null ? dbpc.R.toFixed(4) : '—');
+                    h += f('BP Correlation G', dbpc.G != null ? dbpc.G.toFixed(4) : '—');
+                    h += f('BP Correlation B', dbpc.B != null ? dbpc.B.toFixed(4) : '—');
+                }
+                if (stegoDetect.pvd_smoothness != null) h += f('PVD Smoothness', stegoDetect.pvd_smoothness.toFixed(4));
+                if (stegoDetect.pvd_zero_ratio != null) h += f('PVD Zero Ratio', stegoDetect.pvd_zero_ratio.toFixed(4));
+                const drs = stegoDetect.rs_ratios;
+                if (drs) {
+                    h += f('RS Ratio R', drs.R != null ? drs.R.toFixed(4) : '—');
+                    h += f('RS Ratio G', drs.G != null ? drs.G.toFixed(4) : '—');
+                    h += f('RS Ratio B', drs.B != null ? drs.B.toFixed(4) : '—');
+                }
+                h += f('Samples Analyzed', stegoDetect.samples_analyzed != null ? stegoDetect.samples_analyzed.toLocaleString() : '—');
+                h += '</div></div></div>';
+                h += '</div>';
 
                 var rpIdx = 0;
                 if (stegoDetect.extracted_messages && stegoDetect.extracted_messages.length) {
                     var id = 'rp_collapse_' + (rpIdx++);
                     h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + id + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:4px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Extracted Messages <span style="font-weight:400;color:var(--text-muted);">(' + stegoDetect.extracted_messages.length + ')</span></div>';
                     h += '<div id="' + id + '" style="display:none;">';
+                    h += '<table class="stego-table"><thead><tr><th>Channel</th><th>Message</th><th>Confidence</th><th>Score</th></tr></thead><tbody>';
                     stegoDetect.extracted_messages.forEach(m => {
-                        h += '<div class="rp-stego-msg"><span class="rps-channel">[' + m.channel + ']</span><span class="rps-text">' + m.text + '</span></div>';
+                        const bits = m.bit_plane != null ? ' <span class="st-bit">(bit ' + m.bit_plane + ')</span>' : '';
+                        const conf = m.confidence || '';
+                        const qual = m.quality_score != null ? m.quality_score : '—';
+                        const confClass = conf === 'high' ? 'high' : conf === 'medium' ? 'medium' : 'low';
+                        h += '<tr><td><div class="st-cell"><span class="st-channel">' + m.channel + '</span>' + bits + '</div></td><td><span class="st-msg">' + m.text + '</span></td><td><span class="st-conf ' + confClass + '">' + (conf || '—') + '</span></td><td><span class="st-score">' + qual + '</span></td></tr>';
                     });
-                    h += '</div>';
+                    h += '</tbody></table></div>';
                 }
                 if (stegoDetect.structural_payloads && stegoDetect.structural_payloads.length) {
                     var id = 'rp_collapse_' + (rpIdx++);
                     h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + id + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:6px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Structural Findings <span style="font-weight:400;color:var(--text-muted);">(' + stegoDetect.structural_payloads.length + ')</span></div>';
                     h += '<div id="' + id + '" style="display:none;">';
+                    h += '<table class="stego-table"><thead><tr><th>Format</th><th>Type</th><th>Detail</th></tr></thead><tbody>';
                     stegoDetect.structural_payloads.forEach(s => {
-                        h += '<div class="rp-stego-msg" style="border-left:2px solid var(--warning);"><span class="rps-channel">[' + (s.type || 'payload') + ']</span><span class="rps-text">' + (s.text || s.description || '') + '</span></div>';
+                        const fmt = s.format || '—';
+                        const type_lbl = s.type === 'post_eof_payload' ? 'Appended Data' : 'Hidden Text';
+                        h += '<tr><td><span class="st-channel">' + fmt + '</span></td><td><span class="struct-tag">' + type_lbl + '</span></td><td><span class="st-msg">' + (s.text || s.description || '') + '</span></td></tr>';
                     });
-                    h += '</div>';
+                    h += '</tbody></table></div>';
                 }
                 if (stegoDetect.metadata_findings && stegoDetect.metadata_findings.length) {
                     var id = 'rp_collapse_' + (rpIdx++);
                     h += '<div class="rp-toggle" onclick="var c=document.getElementById(\'' + id + '\');var a=this.querySelector(\'.rpt-icon\');c.style.display=c.style.display===\'none\'?\'\':\'none\';a.textContent=c.style.display===\'none\'?\'\u25b6\':\'\u25bc\';" style="cursor:pointer;font-size:0.7rem;color:var(--text-muted);margin:6px 0 2px;user-select:none;"><span class="rpt-icon">&#x25b6;</span> Metadata Findings <span style="font-weight:400;color:var(--text-muted);">(' + stegoDetect.metadata_findings.length + ')</span></div>';
                     h += '<div id="' + id + '" style="display:none;">';
+                    h += '<table class="stego-table"><thead><tr><th>Field</th><th>Content</th></tr></thead><tbody>';
                     stegoDetect.metadata_findings.forEach(m => {
-                        h += '<div class="rp-stego-msg" style="border-left:2px solid var(--info);"><span class="rps-channel">[' + (m.field || m.type || 'meta') + ']</span><span class="rps-text">' + (m.content || m.description || '') + '</span></div>';
+                        h += '<tr><td><span class="meta-tag">' + (m.field || m.type || 'meta') + '</span></td><td><span class="st-msg">' + (m.content || m.description || '') + '</span></td></tr>';
                     });
-                    h += '</div>';
+                    h += '</tbody></table></div>';
                 }
                 h += '</div>';
             }
 
-            // ── 6. Inference ──
+            // ── 5. Inference ──
             if (r.inference) {
                 const inf = r.inference;
-                h += '<div class="rp-section"><div class="rp-title">Inference Result<span class="line"></span></div><div class="rp-grid">';
-                h += f('Model', inf.model || '—');
-                h += f('Status', inf.status || '—');
-                h += f('Latency', inf.latency_ms != null ? inf.latency_ms + ' <span class="unit">ms</span>' : '—');
-                if (inf.labels && inf.labels.length) h += field('Labels', inf.labels.join(', '));
-                if (inf.file_size != null) h += f('File Size', inf.file_size + ' <span class="unit">bytes</span>');
-                h += '</div></div>';
+                h += '<div class="rp-section"><div class="rp-title">Inference Result<span class="line"></span></div>';
+                h += '<table class="stego-table" style="margin-top:4px;"><tbody>';
+                h += '<tr><td style="width:100px;font-weight:600;color:var(--text-muted);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.03em;">Model</td><td><span class="st-msg" style="font-weight:600;">' + (inf.model || '—') + '</span></td></tr>';
+                h += '<tr><td style="font-weight:600;color:var(--text-muted);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.03em;">Status</td><td><span class="st-msg" style="color:var(--success);">' + (inf.status || '—') + '</span></td></tr>';
+                h += '<tr><td style="font-weight:600;color:var(--text-muted);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.03em;">Latency</td><td><span class="st-msg" style="font-weight:600;">' + (inf.latency_ms != null ? inf.latency_ms + ' <span style="font-weight:400;color:var(--text-muted);font-size:0.72rem;">ms</span>' : '—') + '</span></td></tr>';
+                if (inf.labels && inf.labels.length) {
+                    h += '<tr><td style="font-weight:600;color:var(--text-muted);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.03em;">Labels</td><td><span class="st-msg">' + inf.labels.join(', ') + '</span></td></tr>';
+                }
+                if (inf.file_size != null) {
+                    h += '<tr><td style="font-weight:600;color:var(--text-muted);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.03em;">File Size</td><td><span class="st-msg">' + inf.file_size + ' <span style="font-weight:400;color:var(--text-muted);font-size:0.72rem;">bytes</span></span></td></tr>';
+                }
+                h += '</tbody></table></div>';
             }
 
-            // ── 7. Latency Breakdown ──
+            // ── 6. Latency Breakdown ──
             const lat = r.latency || {};
             if (lat.authorization_ms != null || lat.scanning_ms != null || lat.inference_ms != null) {
-                h += '<div class="rp-section"><div class="rp-title">Latency Breakdown<span class="line"></span></div><div class="rp-grid">';
-                h += f('Authorization', (lat.authorization_ms || 0).toFixed(1) + ' <span class="unit">ms</span>');
-                h += f('Sanitization', (lat.sanitization_ms || 0).toFixed(1) + ' <span class="unit">ms</span>');
-                h += f('Scanning', (lat.scanning_ms || 0).toFixed(1) + ' <span class="unit">ms</span>');
-                h += f('Inference', (lat.inference_ms || 0).toFixed(1) + ' <span class="unit">ms</span>');
-                if (lat.total_security_ms != null) h += f('Security Layer Total', lat.total_security_ms.toFixed(1) + ' <span class="unit">ms</span>', true);
-                if (lat.total_processing_ms != null) h += f('Total Processing', lat.total_processing_ms.toFixed(1) + ' <span class="unit">ms</span>', true);
-                h += '</div></div>';
+                const l_a = lat.authorization_ms || 0;
+                const l_sn = lat.sanitization_ms || 0;
+                const l_st = lat.stego_detection_ms || 0;
+                const l_sc = lat.scanning_ms || 0;
+                const l_g = lat.inference_ms || 0;
+                const l_sec = lat.total_security_ms || (l_a + l_sn + l_st + l_sc);
+                const l_tot = lat.total_processing_ms || (l_a + l_sn + l_st + l_sc + l_g);
+                const l_max = Math.max(l_tot, 1);
+                h += '<div class="rp-section"><div class="rp-title">Latency Breakdown<span class="line"></span></div>';
+                h += '<table class="stego-table" style="margin-top:4px;"><thead><tr><th style="width:110px;">Step</th><th>Duration</th><th></th></tr></thead><tbody>';
+                h += _latRow('Authorization', l_a, l_max, '4,130,246');
+                if (lat.sanitization_ms != null) h += _latRow('Sanitization', l_sn, l_max, '245,158,11');
+                if (lat.stego_detection_ms != null) h += _latRow('Stego Detection', l_st, l_max, '168,85,247');
+                h += _latRow('Scanning', l_sc, l_max, '6,182,212');
+                h += _latRow('Inference', l_g, l_max, '139,92,246');
+                if (l_sec != null) h += '<tr><td style="font-weight:600;color:var(--text-muted);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.03em;border-top:2px solid var(--border);">Security Layer Total</td><td style="border-top:2px solid var(--border);"><span style="font-weight:700;font-size:0.85rem;">' + l_sec.toFixed(1) + '</span> <span style="font-weight:400;color:var(--text-muted);font-size:0.72rem;">ms</span></td><td style="border-top:2px solid var(--border);"></td></tr>';
+                if (l_tot != null) h += '<tr><td style="font-weight:600;color:var(--accent-light);font-size:0.72rem;text-transform:uppercase;letter-spacing:0.03em;">Total Processing</td><td><span style="font-weight:700;font-size:0.9rem;color:var(--accent-light);">' + l_tot.toFixed(1) + '</span> <span style="font-weight:400;color:var(--text-muted);font-size:0.72rem;">ms</span></td><td></td></tr>';
+                h += '</tbody></table></div>';
             }
 
             h += '</div>';

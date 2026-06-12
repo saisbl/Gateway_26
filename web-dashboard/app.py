@@ -6,7 +6,7 @@ import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 
 from lib.config import GPU_SERVICE_URL, POLICY_SERVICE_URL, SCANNER_SERVICE_URL, MAX_WORKERS
 from lib.decode_store import put_decode_batch, get_decode_file, clean_decode_store
@@ -90,22 +90,28 @@ def _process_sync(files, api_key, client_ip):
                 cleaned_bytes = base64.b64decode(combined['cleaned_data_base64'])
                 scan_r = combined['scan']
                 stego = combined.get('steganography', {})
-                stego_findings = None
-                if stego.get('flagged'):
-                    stego_findings = {
-                        'flagged': True,
-                        'reasons': stego.get('reasons', []),
-                        'extracted_messages': stego.get('extracted_messages', []),
-                        'structural_payloads': stego.get('structural_payloads', []),
-                        'metadata_findings': stego.get('metadata_findings', []),
-                    }
+                stego_findings = {
+                    'flagged': stego.get('flagged', False),
+                    'reasons': stego.get('reasons', []),
+                    'extracted_messages': stego.get('extracted_messages', []),
+                    'structural_payloads': stego.get('structural_payloads', []),
+                    'metadata_findings': stego.get('metadata_findings', []),
+                    'chi_square_scores': stego.get('chi_square_scores', {'R': 0, 'G': 0, 'B': 0}),
+                    'lsb_zero_ratios': stego.get('lsb_zero_ratios', {'R': 0, 'G': 0, 'B': 0}),
+                    'bitplane_correlations': stego.get('bitplane_correlations', {'R': 0, 'G': 0, 'B': 0}),
+                    'pvd_smoothness': stego.get('pvd_smoothness', 0),
+                    'pvd_zero_ratio': stego.get('pvd_zero_ratio', 0),
+                    'rs_ratios': stego.get('rs_ratios', {'R': 0.5, 'G': 0.5, 'B': 0.5}),
+                    'samples_analyzed': stego.get('samples_analyzed', 0),
+                }
 
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix='_' + fn)
                 tmp.write(cleaned_bytes)
                 tmp.close()
                 sanitized_path = tmp.name
 
-                sn_ms = round(combined_ms - scan_r.get('scan_time_ms', 0), 2)
+                sn_ms = round(combined.get('sanitize_time_ms', 0), 2)
+                stego_ms = round(combined.get('stego_detection_ms', 0), 2)
                 s_ms = round(scan_r.get('scan_time_ms', 0), 2)
 
                 infer_start = time.time()
@@ -127,9 +133,10 @@ def _process_sync(files, api_key, client_ip):
                     'steganography': stego_findings,
                     'latency': {
                         'authorization_ms': a_ms, 'sanitization_ms': sn_ms,
+                        'stego_detection_ms': stego_ms,
                         'scanning_ms': s_ms, 'inference_ms': g_ms,
-                        'total_security_ms': round(a_ms + sn_ms + s_ms, 2),
-                        'total_processing_ms': round(a_ms + sn_ms + s_ms + g_ms, 2),
+                        'total_security_ms': round(a_ms + sn_ms + stego_ms + s_ms, 2),
+                        'total_processing_ms': round(a_ms + sn_ms + stego_ms + s_ms + g_ms, 2),
                     },
                 }
             except Exception as e:
@@ -181,6 +188,23 @@ def decode_file(batch_id, idx):
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         return jsonify({'error': f'Decode failed: {e}'}), 500
+
+
+@app.route('/preview/<int:batch_id>/<int:idx>', methods=['GET'])
+def preview_file(batch_id, idx):
+    fbytes = get_decode_file(batch_id, idx)
+    if fbytes is None:
+        return jsonify({'error': 'File not found or expired'}), 404
+    mime = 'image/png'
+    if fbytes[:2] == b'\xff\xd8':
+        mime = 'image/jpeg'
+    elif fbytes[:6] in (b'GIF87a', b'GIF89a'):
+        mime = 'image/gif'
+    elif fbytes[:4] == b'\x89PNG':
+        mime = 'image/png'
+    elif fbytes[:4] == b'RIFF':
+        mime = 'image/webp'
+    return Response(fbytes, mimetype=mime)
 
 
 @app.route('/health')

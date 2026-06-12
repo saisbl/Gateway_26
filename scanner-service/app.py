@@ -158,7 +158,9 @@ def sanitize_and_scan():
 
     total_start = time.perf_counter()
 
+    stego_start = time.perf_counter()
     stego = detect_stego_on_bytes_async(data, f.filename)
+    stego_detection_ms = (time.perf_counter() - stego_start) * 1000
 
     try:
         sanitize_start = time.perf_counter()
@@ -178,9 +180,12 @@ def sanitize_and_scan():
         scan_result['checks']['steganography'] = {
             'passed': True,
             'flagged': stego.get('flagged', False),
-            'chi_square_score': stego.get('chi_square_score', 0),
-            'lsb_zero_ratio': stego.get('lsb_zero_ratio', 0),
-            'bitplane_correlation': stego.get('bitplane_correlation', 0),
+            'chi_square_scores': stego.get('chi_square_scores', {'R': 0, 'G': 0, 'B': 0}),
+            'lsb_zero_ratios': stego.get('lsb_zero_ratios', {'R': 0, 'G': 0, 'B': 0}),
+            'bitplane_correlations': stego.get('bitplane_correlations', {'R': 0, 'G': 0, 'B': 0}),
+            'pvd_smoothness': stego.get('pvd_smoothness', 0),
+            'pvd_zero_ratio': stego.get('pvd_zero_ratio', 0),
+            'rs_ratios': stego.get('rs_ratios', {'R': 0.5, 'G': 0.5, 'B': 0.5}),
             'samples_analyzed': stego.get('samples_analyzed', 0),
             'reasons': stego.get('reasons', []),
             'extracted_messages': stego.get('extracted_messages', []),
@@ -201,6 +206,7 @@ def sanitize_and_scan():
         'original_size': len(data),
         'sanitized_size': len(cleaned),
         'sanitize_time_ms': round(sanitize_time_ms, 2),
+        'stego_detection_ms': round(stego_detection_ms, 2),
         'scan': scan_result,
         'steganography': stego,
         'time_ms': round((time.perf_counter() - total_start) * 1000, 2),
@@ -262,6 +268,13 @@ def decode_stego():
         'extracted_messages': stego.get('extracted_messages', []),
         'structural_payloads': stego.get('structural_payloads', []),
         'metadata_findings': stego.get('metadata_findings', []),
+        'chi_square_scores': stego.get('chi_square_scores', {'R': 0, 'G': 0, 'B': 0}),
+        'lsb_zero_ratios': stego.get('lsb_zero_ratios', {'R': 0, 'G': 0, 'B': 0}),
+        'bitplane_correlations': stego.get('bitplane_correlations', {'R': 0, 'G': 0, 'B': 0}),
+        'pvd_smoothness': stego.get('pvd_smoothness', 0),
+        'pvd_zero_ratio': stego.get('pvd_zero_ratio', 0),
+        'rs_ratios': stego.get('rs_ratios', {'R': 0.5, 'G': 0.5, 'B': 0.5}),
+        'samples_analyzed': stego.get('samples_analyzed', 0),
     }
     return jsonify(result), 200
 

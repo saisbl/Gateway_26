@@ -1,10 +1,16 @@
+# Python
 __pycache__/
-*.pyc
-*.bak
-logs/
-.env
-*.log
-*.err
-# Waitress output redirection files
-scanner-service/scanner-*
-web-dashboard/dashboard-*
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Test images (root level)
+/t.png
+/test_*.png
+/Encoded message.png
+
+# OS
+Thumbs.db
+.DS_Store

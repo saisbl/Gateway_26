@@ -1,7 +1,7 @@
 # AGENTS.md — Project Handoff
 
 **Agent Model**: opencode/big-pickle
-**Last Updated**: 2026-06-08T15:30:00+05:30
+**Last Updated**: 2026-06-12T14:30:00+05:30
 
 ---
 
@@ -90,6 +90,29 @@ Get-NetTCPConnection -LocalPort 5001,5002,5003,8080 | Stop-Process -Id {$_.Ownin
 | `inactive-key-000` | tenant-4 | development | 2027-01-01 (deactivated) | `/infer` |
 
 ---
+
+## Recent Changes (Jun 12, 2026)
+
+### Strong Stego Detection Rewrite
+- **Per-channel Chi-square** — tests R, G, B individually (was global)
+- **Bit planes 0,1,2** analyzed for each RGB + Alpha + interleaved RGB
+- **RS Analysis** (Regular-Singular) per channel
+- **PVD analysis** (Pixel Value Differencing histogram)
+- **Quality scoring + confidence** (high/medium/low) on extracted messages
+- **Enhanced text extraction**: UTF-8, hex-encoded, Base64 strings
+- **Quick check gate**: scans bit plane 0 AND 1 across all channels
+- **Statistical Details collapsed** behind ▶ toggle in report
+- **Single Steganography Analysis section** (was duplicated)
+
+### Latency Split
+- `stego_detection_ms` timed separately in scanner
+- Timeline shows 5 segments (Authorization, Sanitization, Stego Detection, Scanning, Inference)
+- All totals corrected
+
+### Report Organization
+- Table layouts for Inference Result and Latency Breakdown (with visual bars)
+- Clean table format for Extracted Messages (Channel, Message, Confidence badge, Score)
+- Amber structural tags, blue metadata tags
 
 ## Recent Changes (May 26, 2026)
 

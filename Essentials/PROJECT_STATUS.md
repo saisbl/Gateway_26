@@ -1,6 +1,6 @@
 # Project Status Report
 
-**Last Updated**: Jun 08, 2026 — Latency fix: old scanner process + stego optimization
+**Last Updated**: Jun 12, 2026 — Strong stego detection, latency split, report organization
 
 ### Service Restart Log
 
@@ -454,6 +454,41 @@ Each `app.py` is now a thin Flask route file. See `AGENTS.md` for full module ma
 - **Scalability**: Local execution suitable for development/testing, not production
 - **Security**: All security checks operational (authorization, scanning, rate limiting)
 - **Performance**: Optimized for local development with reduced network overhead
+
+---
+
+## Jun 12, 2026 — Strong Stego Detection, Latency Split, Report Organization
+
+### Stego Detection Rewrite (`scanner-service/engines/steganography.py`)
+- ✅ **Per-channel Chi-square** — tests R, G, B individually (was global), much more sensitive
+- ✅ **All 3 bit planes (0,1,2)** analyzed for each RGB channel (was only LSB-1)
+- ✅ **RS Analysis** (Regular-Singular groups) per channel — classic stego detection
+- ✅ **PVD analysis** (Pixel Value Differencing histogram) — detects spatial embedding anomalies
+- ✅ **Color correlation analysis** — compares statistics across R/G/B channels
+- ✅ **Quality scoring** — `_score_text_quality()` ranks found messages by length, character diversity, entropy, keywords
+- ✅ **Message confidence** — `high`/`medium`/`low` based on quality score
+- ✅ **Enhanced text extraction** — UTF-8 multi-byte, hex-encoded strings, Base64 detection
+- ✅ **Quick check gate fix** — scans bit planes 0 AND 1 across all channels (was only LSB-1 blue channel)
+- ✅ **Clean image test**: zero false positives
+
+### Latency Split — Stego Detection Separated from Sanitization
+- ✅ `stego_detection_ms` now timed separately in scanner `/sanitize-and-scan` endpoint
+- ✅ Dashboard uses `sanitize_time_ms` directly from scanner (was computing `total - scan`)
+- ✅ Inspection modal timeline shows 5 segments: Authorization, Sanitization, Stego Detection, Scanning, Inference
+- ✅ Detailed report latency table includes Stego Detection row with proportional bar
+
+### Report Organization
+- ✅ **Single Steganography Analysis section** — removed duplicate Stego Scan (Statistical) section (same data shown twice)
+- ✅ **Statistical Details** collapsed by default under ▶ toggle in both sections
+- ✅ **Table layout** for Inference Result (Model, Status, Latency, Labels, File Size)
+- ✅ **Table + proportional bars** for Latency Breakdown with Security Layer Total and Total Processing rows
+- ✅ **Clean table format** for Extracted Messages (Channel, Message, Confidence badge, Score)
+- ✅ **Structural Findings** with amber format/type badges
+- ✅ **Metadata Findings** with blue field badges
+
+### Fixes
+- ✅ **Duplicate stego sections removed** — detection runs once at sanitize time, results written to one location
+- ✅ **Latency totals corrected** — `total_security_ms` and `total_processing_ms` now include all 5 steps
 
 ---
 
